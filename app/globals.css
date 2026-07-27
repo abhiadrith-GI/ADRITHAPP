@@ -1,0 +1,30 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  /* Finalized ADRITH brand tokens — do not change without re-checking the
+     approved design reference (ADRITH-master-reference.md). */
+  --adrith-black: #000000;
+  --adrith-off-white: #E7F0F5;
+  --adrith-dim: #7A98AA;
+  --adrith-dim-2: #8B9096;
+  --adrith-rust: #C4622E;
+  --adrith-card: #0D0E10;
+  --adrith-border: rgba(255, 255, 255, 0.22);
+
+  --background: var(--adrith-black);
+  --foreground: var(--adrith-off-white);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono-label: "IBM Plex Mono", monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: "Space Grotesk", sans-serif;
+}
