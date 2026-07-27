@@ -16,6 +16,15 @@ before testing any of this — none of the new pieces exist in your actual
 database yet. (I can't do this step myself: this sandbox's network access
 doesn't reach supabase.co.)
 
+**Also new this session:** `supabase/patch-start-from-any-stage.sql` — a
+separate, smaller script for the "start tracking from any stage" feature
+(see below). If you're running the full `schema.sql` fresh on a brand-new
+database, you don't need this patch too — it's already folded in. If your
+database already exists and you're just picking up what's new, run this
+patch on top of it once (same idea as the earlier sign-off fix's patch
+file). It's been tested both ways — fresh and as a patch on the old
+schema — and produces identical results either way.
+
 ## What's actually working right now
 
 - Sign up with a role (Owner / Contractor / Engineer / Architect)
@@ -228,3 +237,46 @@ against real data — see the note at the top of this README.
 **Still not built:** the project group/chat feature, the flagged-checkpoint
 escalation workflow, and the other five tools — each is its own future
 build session, in the order already agreed.
+
+## Build session — start from any stage, plus PWA install support
+
+**"Start from any stage"** — a project no longer has to begin at Foundation.
+Real for a firm joining a build already in progress (the slab's already
+poured, say). What changed:
+
+- **New project status:** `not_tracked`, for whichever stages come before
+  wherever a project chose to start — deliberately distinct from `locked`
+  (which means "will unlock later"; a `not_tracked` stage never will). Shown
+  in the UI as a plain dim circle, no border, clearly different from
+  `locked`'s dashed one, and correctly excluded from being clickable.
+- **Choosing a starting stage is gated, not free-for-all:** if the person
+  creating the project is already this project's nominated designer (or a
+  platform admin), their chosen starting stage applies immediately. If
+  they're not, the project sits with zero checklist stages and
+  `start_stage_pending = true` until the designer or an admin confirms it
+  from the project page — the same "database is the real boundary, not the
+  UI" principle the sign-off fix follows. Both paths, including the two
+  rejection cases (wrong person tries to approve; approving something
+  already approved), were tested directly against real Postgres, not just
+  read over — see `supabase/patch-start-from-any-stage.sql`'s own testing
+  before it was written up.
+- **Why the old auto-seeding trigger had to go:** it fired the instant a
+  project row was inserted — before the client's second, separate insert
+  into `project_members` even happens — so it could never correctly check
+  whether the creator is this project's designer. Replaced with two
+  functions the client calls explicitly, once both inserts have actually
+  succeeded: `finalize_project_setup` and `approve_project_start_stage`.
+
+**PWA install support** — "Add to Home Screen" now works: app icon (built
+directly from the existing approved logo mark, not a new design), full-
+screen with no browser bar, `manifest.json`, and a deliberately minimal
+service worker. It does not yet cache anything for offline use — a
+considered choice, not an oversight, while the app itself is still actively
+changing week to week; a stale cached version serving instead of the real
+latest deploy would do more harm than good right now. Worth revisiting once
+things settle.
+
+**What I could not do myself, and why:** same as before — this sandbox
+can't reach supabase.co directly, so `patch-start-from-any-stage.sql` needs
+to be run in the Supabase SQL editor before the new stage-picker will
+actually work against real data.

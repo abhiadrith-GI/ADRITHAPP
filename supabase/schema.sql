@@ -188,7 +188,10 @@ create policy "only the project creator can add members"
 -- 3. CHECKLIST STAGES  (Foundation -> Steel -> RCC Casting -> Brickwork ->
 --    Plastering -> Finishing — stage-gated, matches the construction sequence)
 -- ----------------------------------------------------------------------------
-create type stage_status as enum ('locked', 'in_progress', 'submitted', 'approved', 'rejected');
+-- not_tracked: stages before wherever a project chose to start tracking
+-- from (see requested_start_stage_key below) — distinct from 'locked',
+-- which means "will unlock later," since a not_tracked stage never will.
+create type stage_status as enum ('locked', 'in_progress', 'submitted', 'approved', 'rejected', 'not_tracked');
 
 create table checklist_stages (
   id uuid primary key default gen_random_uuid(),
@@ -336,6 +339,16 @@ alter table projects add column fee_exempt boolean not null default false;
 -- authority the checklist relies on.
 alter table project_members add column is_project_designer boolean not null default false;
 
+-- Lets a project start tracking from any of the six stages, not only
+-- Foundation — for a firm joining mid-construction (e.g. the slab is
+-- already poured). Null/'foundation' is the ordinary default start, no
+-- request involved. Requesting any other stage needs confirmation from
+-- this project's nominated designer or a platform admin before the
+-- checklist_stages rows actually get created — see finalize_project_setup
+-- and approve_project_start_stage further below.
+alter table projects add column requested_start_stage_key text;
+alter table projects add column start_stage_pending boolean not null default false;
+
 -- Only the platform admin may toggle fee_exempt — same enforcement pattern
 -- as the existing lock_privileged_profile_fields trigger on profiles.
 create or replace function lock_fee_exempt_field()
@@ -374,7 +387,16 @@ create policy "admin can update any project"
 -- research pass before real checkpoints are written for it. Do not treat
 -- the two seeded here as complete.
 -- ----------------------------------------------------------------------------
-create or replace function create_default_stages_and_checkpoints(target_project_id uuid)
+-- start_stage_key defaults to 'foundation' — the ordinary case, unchanged
+-- from before: every stage locked except Foundation, which is in_progress.
+-- Passing any other valid key marks every stage before it 'not_tracked'
+-- (not 'locked' — it will never unlock, since it's being deliberately
+-- skipped, not waited on), the chosen stage 'in_progress', and everything
+-- after it 'locked' exactly as before.
+create or replace function create_default_stages_and_checkpoints(
+  target_project_id uuid,
+  start_stage_key text default 'foundation'
+)
 returns void as $$
 declare
   stage_defs jsonb := '[
@@ -413,17 +435,28 @@ declare
   cp jsonb;
   new_stage_id uuid;
   idx int := 0;
+  reached_start boolean := false;
+  computed_status stage_status;
 begin
   for stage in select * from jsonb_array_elements(stage_defs)
   loop
+    if stage->>'key' = start_stage_key then
+      computed_status := 'in_progress';
+      reached_start := true;
+    elsif reached_start then
+      computed_status := 'locked';
+    else
+      computed_status := 'not_tracked';
+    end if;
+
     insert into checklist_stages (project_id, stage_key, display_name, order_index, status, unlocked_at)
     values (
       target_project_id,
       stage->>'key',
       stage->>'name',
       idx,
-      case when idx = 0 then 'in_progress' else 'locked' end,
-      case when idx = 0 then now() else null end
+      computed_status,
+      case when computed_status = 'in_progress' then now() else null end
     )
     returning id into new_stage_id;
 
@@ -435,22 +468,86 @@ begin
 
     idx := idx + 1;
   end loop;
+
+  if not reached_start then
+    raise exception 'Invalid start_stage_key: % is not one of the six stage keys', start_stage_key;
+  end if;
 end;
 $$ language plpgsql security definer;
 
--- Runs automatically the moment a project row is inserted — the person
--- creating a project never has to remember a separate "set up stages" step.
-create or replace function on_project_created()
-returns trigger as $$
+-- ----------------------------------------------------------------------------
+-- Stage seeding used to run automatically via an on_project_created trigger,
+-- firing immediately after the projects row was inserted. That worked fine
+-- when every project always started at Foundation — but "start from any
+-- stage" needs to know whether the CREATOR is this project's designer, and
+-- that lives on project_members, which the client only inserts in a second,
+-- separate call right after creating the project. A trigger firing on the
+-- projects insert would run before that row exists, so it could never
+-- correctly check designer authorization. Replacing the trigger with an
+-- explicit function the client calls once both inserts have succeeded.
+--
+-- finalize_project_setup: called right after project_members is inserted.
+--   - No special start requested (null or 'foundation'): seeds immediately,
+--     identical to the old always-Foundation behavior.
+--   - A later stage requested, and the creator already has the authority to
+--     confirm it (they're this project's nominated designer, or a platform
+--     admin): seeds immediately, with earlier stages marked not_tracked.
+--   - A later stage requested, creator does NOT have that authority: no
+--     stages are created yet. start_stage_pending is set true, and the
+--     project sits waiting for approve_project_start_stage below.
+create or replace function finalize_project_setup(target_project_id uuid)
+returns void as $$
+declare
+  requested_key text;
 begin
-  perform create_default_stages_and_checkpoints(new.id);
-  return new;
+  select requested_start_stage_key into requested_key
+  from projects where id = target_project_id;
+
+  if requested_key is null or requested_key = 'foundation' then
+    perform create_default_stages_and_checkpoints(target_project_id, 'foundation');
+    return;
+  end if;
+
+  if current_user_is_project_designer(target_project_id) or current_user_is_admin() then
+    perform create_default_stages_and_checkpoints(target_project_id, requested_key);
+  else
+    update projects set start_stage_pending = true where id = target_project_id;
+  end if;
 end;
 $$ language plpgsql security definer;
 
-create trigger on_project_created_trigger
-  after insert on projects
-  for each row execute function on_project_created();
+grant execute on function finalize_project_setup(uuid) to authenticated;
+
+-- Called by this project's nominated designer, or a platform admin, to
+-- confirm a pending "start from a later stage" request someone else made
+-- at project creation. Re-checks authorization itself rather than trusting
+-- the caller — the same "RLS/database is the real boundary, not the UI"
+-- principle the sign-off fix above exists to enforce.
+create or replace function approve_project_start_stage(target_project_id uuid)
+returns void as $$
+declare
+  requested_key text;
+  already_seeded boolean;
+begin
+  if not (current_user_is_project_designer(target_project_id) or current_user_is_admin()) then
+    raise exception 'Only this project''s nominated designer or a platform admin can confirm the starting stage.';
+  end if;
+
+  select exists(select 1 from checklist_stages where project_id = target_project_id) into already_seeded;
+  if already_seeded then
+    raise exception 'This project''s stages have already been set up.';
+  end if;
+
+  select requested_start_stage_key into requested_key
+  from projects where id = target_project_id;
+
+  perform create_default_stages_and_checkpoints(target_project_id, coalesce(requested_key, 'foundation'));
+
+  update projects set start_stage_pending = false where id = target_project_id;
+end;
+$$ language plpgsql security definer;
+
+grant execute on function approve_project_start_stage(uuid) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Stage-gating: the moment a sign-off is inserted for a stage, that stage

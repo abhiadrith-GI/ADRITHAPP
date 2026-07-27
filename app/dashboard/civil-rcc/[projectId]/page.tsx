@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import type { ChecklistStage } from "@/types/database";
+import { DEFAULT_STAGES, type ChecklistStage } from "@/types/database";
+import { RingBackground } from "@/components/ring-background";
+import { PendingStartBanner } from "@/components/pending-start-banner";
 
 const STATUS_LABEL: Record<ChecklistStage["status"], string> = {
   locked: "Locked",
@@ -9,6 +11,7 @@ const STATUS_LABEL: Record<ChecklistStage["status"], string> = {
   submitted: "Submitted",
   approved: "Signed Off",
   rejected: "Rejected",
+  not_tracked: "Not Tracked",
 };
 
 export default async function ProjectDetailPage({
@@ -26,7 +29,7 @@ export default async function ProjectDetailPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, location")
+    .select("id, name, location, requested_start_stage_key, start_stage_pending")
     .eq("id", projectId)
     .single();
 
@@ -40,21 +43,51 @@ export default async function ProjectDetailPage({
 
   const stages = stagesData as ChecklistStage[] | null;
 
+  let canApproveStart = false;
+  if (project.start_stage_pending) {
+    const [{ data: membership }, { data: profile }] = await Promise.all([
+      supabase
+        .from("project_members")
+        .select("is_project_designer")
+        .eq("project_id", projectId)
+        .eq("user_id", user.id)
+        .maybeSingle(),
+      supabase.from("profiles").select("is_platform_admin").eq("id", user.id).single(),
+    ]);
+    canApproveStart = Boolean(membership?.is_project_designer) || Boolean(profile?.is_platform_admin);
+  }
+
+  const requestedStageName =
+    DEFAULT_STAGES.find((s) => s.key === project.requested_start_stage_key)?.name ??
+    project.requested_start_stage_key ??
+    "";
+
   return (
-    <main className="mx-auto max-w-md px-4 py-8">
-      <Link href="/dashboard/civil-rcc" className="font-mono text-xs text-[var(--adrith-dim-2)]">
-        ← Projects
-      </Link>
+    <main className="relative min-h-screen overflow-hidden px-4 py-8">
+      <RingBackground cyPercent={7} bright={false} />
 
-      <h1 className="mb-1 mt-3 text-lg font-bold">{project.name}</h1>
-      {project.location && (
-        <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">{project.location}</p>
-      )}
+      <div className="relative z-10 mx-auto max-w-md">
+        <Link href="/dashboard/civil-rcc" className="font-mono text-xs text-[var(--adrith-dim-2)]">
+          ← Projects
+        </Link>
 
-      <div className="flex flex-col">
-        {(stages ?? []).map((stage, i) => {
+        <h1 className="mb-1 mt-3 text-lg font-bold">{project.name}</h1>
+        {project.location && (
+          <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">{project.location}</p>
+        )}
+
+        {project.start_stage_pending && (
+          <PendingStartBanner
+            projectId={project.id}
+            requestedStageName={requestedStageName}
+            canApprove={canApproveStart}
+          />
+        )}
+
+        <div className="flex flex-col">
+          {(stages ?? []).map((stage, i) => {
           const isLast = i === (stages?.length ?? 0) - 1;
-          const clickable = stage.status !== "locked";
+          const clickable = stage.status !== "locked" && stage.status !== "not_tracked";
           const content = (
             <div className="flex items-center gap-3 pb-5">
               <div className="relative flex flex-col items-center self-stretch">
@@ -66,7 +99,9 @@ export default async function ProjectDetailPage({
               <div className="flex flex-1 items-center justify-between pt-0.5">
                 <span
                   className={`text-sm ${
-                    stage.status === "locked" ? "text-[var(--adrith-dim-2)]" : ""
+                    stage.status === "locked" || stage.status === "not_tracked"
+                      ? "text-[var(--adrith-dim-2)]"
+                      : ""
                   }`}
                 >
                   {stage.display_name}
@@ -92,6 +127,7 @@ export default async function ProjectDetailPage({
             <div key={stage.id}>{content}</div>
           );
         })}
+        </div>
       </div>
     </main>
   );
@@ -105,6 +141,9 @@ function Node({ status }: { status: ChecklistStage["status"] }) {
     return (
       <span className="h-[18px] w-[18px] rounded-full border-2 border-dashed border-white/30" />
     );
+  }
+  if (status === "not_tracked") {
+    return <span className="h-[18px] w-[18px] rounded-full border border-white/15 bg-white/10" />;
   }
   return (
     <span className="h-[18px] w-[18px] rounded-full border-2 border-[var(--adrith-rust)]" />

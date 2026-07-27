@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Project } from "@/types/database";
+import { RingBackground } from "@/components/ring-background";
 
 /**
  * "Your Projects" vs "All Platform Projects" are deliberately two separate
@@ -37,7 +38,7 @@ export default async function CivilRccPage() {
 
   const { data: yourProjects } = await supabase
     .from("projects")
-    .select("id, name, location, created_at, created_by, fee_exempt")
+    .select("id, name, location, created_at, created_by, fee_exempt, requested_start_stage_key, start_stage_pending")
     .or(orFilter)
     .order("created_at", { ascending: false });
 
@@ -45,34 +46,38 @@ export default async function CivilRccPage() {
   if (profile?.is_platform_admin) {
     const { data } = await supabase
       .from("projects")
-      .select("id, name, location, created_at, created_by, fee_exempt")
+      .select("id, name, location, created_at, created_by, fee_exempt, requested_start_stage_key, start_stage_pending")
       .order("created_at", { ascending: false });
     allProjects = data;
   }
 
   return (
-    <main className="mx-auto max-w-md px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <Link href="/dashboard" className="font-mono text-xs text-[var(--adrith-dim-2)]">
-          ← Tools
-        </Link>
-        <span className="font-mono text-xs text-[var(--adrith-rust)]">CIVIL &amp; RCC</span>
-      </div>
+    <main className="relative min-h-screen overflow-hidden px-4 py-8">
+      <RingBackground cyPercent={7} bright={false} />
 
-      <ProjectSection title="Your Projects" projects={yourProjects} />
-
-      {profile?.is_platform_admin && (
-        <div className="mt-8">
-          <ProjectSection title="All Platform Projects" projects={allProjects} />
+      <div className="relative z-10 mx-auto max-w-md">
+        <div className="mb-6 flex items-center justify-between">
+          <Link href="/dashboard" className="font-mono text-xs text-[var(--adrith-dim-2)]">
+            ← Tools
+          </Link>
+          <span className="font-mono text-xs text-[var(--adrith-rust)]">CIVIL &amp; RCC</span>
         </div>
-      )}
 
-      <Link
-        href="/dashboard/civil-rcc/new"
-        className="mt-4 block rounded-xl border border-dashed border-white/25 px-4 py-3 text-center font-mono text-xs text-[var(--adrith-dim-2)]"
-      >
-        + Start a New Project
-      </Link>
+        <ProjectSection title="Your Projects" projects={yourProjects} />
+
+        {profile?.is_platform_admin && (
+          <div className="mt-8">
+            <ProjectSection title="All Platform Projects" projects={allProjects} />
+          </div>
+        )}
+
+        <Link
+          href="/dashboard/civil-rcc/new"
+          className="mt-4 block rounded-xl border border-dashed border-white/25 px-4 py-3 text-center font-mono text-xs text-[var(--adrith-dim-2)]"
+        >
+          + Start a New Project
+        </Link>
+      </div>
     </main>
   );
 }

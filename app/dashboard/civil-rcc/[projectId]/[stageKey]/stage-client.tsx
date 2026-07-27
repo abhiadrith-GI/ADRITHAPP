@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Checkpoint, ChecklistStage, CheckpointEvidence, UserRole } from "@/types/database";
+import { RingBackground } from "@/components/ring-background";
 
 type Props = {
   projectId: string;
@@ -86,48 +87,52 @@ export default function StageClient({
     localCheckpoints.every((c) => c.status !== "pending");
 
   return (
-    <main className="mx-auto max-w-md px-4 py-8">
-      <Link
-        href={`/dashboard/civil-rcc/${projectId}`}
-        className="font-mono text-xs text-[var(--adrith-dim-2)]"
-      >
-        ← {projectName}
-      </Link>
+    <main className="relative min-h-screen overflow-hidden px-4 py-8">
+      <RingBackground cyPercent={7} bright={false} />
 
-      <h1 className="mb-6 mt-3 text-lg font-bold">{stage.display_name}</h1>
+      <div className="relative z-10 mx-auto max-w-md">
+        <Link
+          href={`/dashboard/civil-rcc/${projectId}`}
+          className="font-mono text-xs text-[var(--adrith-dim-2)]"
+        >
+          ← {projectName}
+        </Link>
 
-      {error && (
-        <p className="mb-4 rounded-lg border border-red-500/40 px-3 py-2 text-xs text-red-400">
-          {error}
-        </p>
-      )}
+        <h1 className="mb-6 mt-3 text-lg font-bold">{stage.display_name}</h1>
 
-      <div className="flex flex-col gap-4">
-        {localCheckpoints.map((cp) => (
-          <CheckpointCard
-            key={cp.id}
-            checkpoint={cp}
-            evidence={localEvidence.filter((e) => e.checkpoint_id === cp.id)}
-            onStatusChange={(status) => updateCheckpointStatus(cp.id, status)}
-            onTakePhoto={() => setActiveCamera(cp.id)}
+        {error && (
+          <p className="mb-4 rounded-lg border border-red-500/40 px-3 py-2 text-xs text-red-400">
+            {error}
+          </p>
+        )}
+
+        <div className="flex flex-col gap-4">
+          {localCheckpoints.map((cp) => (
+            <CheckpointCard
+              key={cp.id}
+              checkpoint={cp}
+              evidence={localEvidence.filter((e) => e.checkpoint_id === cp.id)}
+              onStatusChange={(status) => updateCheckpointStatus(cp.id, status)}
+              onTakePhoto={() => setActiveCamera(cp.id)}
+            />
+          ))}
+        </div>
+
+        {activeCamera && (
+          <CameraCapture
+            onCapture={(blob) => handleCaptured(activeCamera, blob)}
+            onClose={() => setActiveCamera(null)}
           />
-        ))}
-      </div>
+        )}
 
-      {activeCamera && (
-        <CameraCapture
-          onCapture={(blob) => handleCaptured(activeCamera, blob)}
-          onClose={() => setActiveCamera(null)}
+        <SignOffSection
+          stageId={stage.id}
+          canSignOff={canSignOff}
+          allAddressed={allAddressed}
+          existingSignOff={existingSignOff}
+          onSigned={() => router.refresh()}
         />
-      )}
-
-      <SignOffSection
-        stageId={stage.id}
-        canSignOff={canSignOff}
-        allAddressed={allAddressed}
-        existingSignOff={existingSignOff}
-        onSigned={() => router.refresh()}
-      />
+      </div>
     </main>
   );
 }

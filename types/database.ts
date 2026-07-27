@@ -1,6 +1,12 @@
 export type UserRole = "owner" | "contractor" | "engineer" | "architect";
 
-export type StageStatus = "locked" | "in_progress" | "submitted" | "approved" | "rejected";
+export type StageStatus =
+  | "locked"
+  | "in_progress"
+  | "submitted"
+  | "approved"
+  | "rejected"
+  | "not_tracked";
 
 export type CheckpointStatus = "pending" | "pass" | "fail" | "flagged";
 
@@ -21,6 +27,10 @@ export interface Project {
   created_by: string;
   created_at: string;
   fee_exempt: boolean;
+  /** Null (or "foundation") means the normal, default start — no request involved. */
+  requested_start_stage_key: string | null;
+  /** True while a non-designer's chosen starting stage awaits designer/admin approval. */
+  start_stage_pending: boolean;
 }
 
 export interface ProjectMember {
@@ -69,11 +79,17 @@ export interface Checkpoint {
   order_index: number;
 }
 
-/** The six stages, in construction order, seeded for every new project. */
+/**
+ * The six stages, in construction order, seeded for every new project.
+ * Names here must exactly match the display_name values seeded by
+ * create_default_stages_and_checkpoints in schema.sql — this is the one
+ * place the frontend needs to know the stage list up front (e.g. to build
+ * a "start from this stage" picker before any checklist_stages rows exist).
+ */
 export const DEFAULT_STAGES: Array<{ key: string; name: string }> = [
-  { key: "foundation", name: "Foundation & Excavation" },
+  { key: "foundation", name: "Foundation" },
   { key: "steel", name: "Steel Reinforcement" },
-  { key: "rcc_casting", name: "RCC / Slab Casting" },
+  { key: "rcc_casting", name: "RCC Casting" },
   { key: "brickwork", name: "Brickwork" },
   { key: "plastering", name: "Plastering" },
   { key: "finishing", name: "Finishing" },
