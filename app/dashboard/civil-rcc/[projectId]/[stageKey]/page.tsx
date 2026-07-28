@@ -30,7 +30,7 @@ export default async function StagePage({
 
   const { data: stage } = await supabase
     .from("checklist_stages")
-    .select("id, project_id, stage_key, display_name, order_index, status, unlocked_at")
+    .select("id, project_id, stage_key, display_name, order_index, status, unlocked_at, floor_number")
     .eq("project_id", projectId)
     .eq("stage_key", stageKey)
     .single();

@@ -1,9 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { DEFAULT_STAGES, type ChecklistStage } from "@/types/database";
+import { buildStartingStageOptions, floorLabel, type ChecklistStage } from "@/types/database";
 import { RingBackground } from "@/components/ring-background";
 import { PendingStartBanner } from "@/components/pending-start-banner";
+import { AddMemberForm } from "@/components/add-member-form";
+import { AddNextFloorButton } from "@/components/add-next-floor-button";
 
 const STATUS_LABEL: Record<ChecklistStage["status"], string> = {
   locked: "Locked",
@@ -29,7 +31,7 @@ export default async function ProjectDetailPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, location, requested_start_stage_key, start_stage_pending")
+    .select("id, name, location, requested_start_stage_key, start_stage_pending, requested_floor_count")
     .eq("id", projectId)
     .single();
 
@@ -37,30 +39,40 @@ export default async function ProjectDetailPage({
 
   const { data: stagesData } = await supabase
     .from("checklist_stages")
-    .select("id, project_id, stage_key, display_name, order_index, status, unlocked_at")
+    .select("id, project_id, stage_key, display_name, order_index, status, unlocked_at, floor_number")
     .eq("project_id", projectId)
     .order("order_index", { ascending: true });
 
-  const stages = stagesData as ChecklistStage[] | null;
+  const stages = (stagesData as ChecklistStage[] | null) ?? [];
 
-  let canApproveStart = false;
-  if (project.start_stage_pending) {
-    const [{ data: membership }, { data: profile }] = await Promise.all([
-      supabase
-        .from("project_members")
-        .select("is_project_designer")
-        .eq("project_id", projectId)
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      supabase.from("profiles").select("is_platform_admin").eq("id", user.id).single(),
-    ]);
-    canApproveStart = Boolean(membership?.is_project_designer) || Boolean(profile?.is_platform_admin);
-  }
+  const [{ data: membership }, { data: profile }] = await Promise.all([
+    supabase
+      .from("project_members")
+      .select("is_project_designer")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase.from("profiles").select("is_platform_admin").eq("id", user.id).single(),
+  ]);
+  const isDesignerOrAdmin = Boolean(membership?.is_project_designer) || Boolean(profile?.is_platform_admin);
 
   const requestedStageName =
-    DEFAULT_STAGES.find((s) => s.key === project.requested_start_stage_key)?.name ??
-    project.requested_start_stage_key ??
-    "";
+    buildStartingStageOptions(project.requested_floor_count ?? 0).find(
+      (s) => s.key === project.requested_start_stage_key
+    )?.label ?? project.requested_start_stage_key ?? "";
+
+  // Foundation (floor_number null) first, then each floor's stages grouped
+  // together in order, matching how the whole thing is actually built.
+  const foundationStages = stages.filter((s) => s.floor_number === null);
+  const floorNumbers = Array.from(
+    new Set(stages.filter((s) => s.floor_number !== null).map((s) => s.floor_number as number))
+  ).sort((a, b) => a - b);
+
+  const topFloor = floorNumbers.length > 0 ? floorNumbers[floorNumbers.length - 1] : null;
+  const topFloorSlabBeam = stages.find(
+    (s) => s.floor_number === topFloor && s.stage_key.endsWith("_slab_beam")
+  );
+  const canAddNextFloor = topFloorSlabBeam?.status === "approved";
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
@@ -80,21 +92,66 @@ export default async function ProjectDetailPage({
           <PendingStartBanner
             projectId={project.id}
             requestedStageName={requestedStageName}
-            canApprove={canApproveStart}
+            canApprove={isDesignerOrAdmin}
           />
         )}
 
-        <div className="flex flex-col">
-          {(stages ?? []).map((stage, i) => {
-          const isLast = i === (stages?.length ?? 0) - 1;
+        {foundationStages.length > 0 && (
+          <StageGroup title="Foundation" stages={foundationStages} projectId={projectId} />
+        )}
+
+        {floorNumbers.map((floorNum) => (
+          <StageGroup
+            key={floorNum}
+            title={floorLabel(floorNum)}
+            stages={stages.filter((s) => s.floor_number === floorNum)}
+            projectId={projectId}
+          />
+        ))}
+
+        {topFloor !== null && (
+          <AddNextFloorButton
+            projectId={project.id}
+            nextFloorLabel={floorLabel(topFloor + 1)}
+            canAdd={isDesignerOrAdmin}
+            readyToAdd={canAddNextFloor}
+          />
+        )}
+
+        <div className="mt-10 border-t border-white/10 pt-6">
+          <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
+            Members
+          </p>
+          <AddMemberForm projectId={project.id} />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function StageGroup({
+  title,
+  stages,
+  projectId,
+}: {
+  title: string;
+  stages: ChecklistStage[];
+  projectId: string;
+}) {
+  return (
+    <div className="mb-6">
+      <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
+        {title}
+      </p>
+      <div className="flex flex-col">
+        {stages.map((stage, i) => {
+          const isLast = i === stages.length - 1;
           const clickable = stage.status !== "locked" && stage.status !== "not_tracked";
           const content = (
             <div className="flex items-center gap-3 pb-5">
               <div className="relative flex flex-col items-center self-stretch">
                 <Node status={stage.status} />
-                {!isLast && (
-                  <span className="mt-1 w-0.5 flex-1 bg-white/20" aria-hidden />
-                )}
+                {!isLast && <span className="mt-1 w-0.5 flex-1 bg-white/20" aria-hidden />}
               </div>
               <div className="flex flex-1 items-center justify-between pt-0.5">
                 <span
@@ -104,13 +161,13 @@ export default async function ProjectDetailPage({
                       : ""
                   }`}
                 >
-                  {stage.display_name}
+                  {stage.display_name.includes("—")
+                    ? stage.display_name.split("—")[1].trim()
+                    : stage.display_name}
                 </span>
                 <span
                   className={`font-mono text-[10px] uppercase ${
-                    stage.status === "approved"
-                      ? "text-[var(--adrith-rust)]"
-                      : "text-[var(--adrith-dim-2)]"
+                    stage.status === "approved" ? "text-[var(--adrith-rust)]" : "text-[var(--adrith-dim-2)]"
                   }`}
                 >
                   {STATUS_LABEL[stage.status]}
@@ -127,9 +184,8 @@ export default async function ProjectDetailPage({
             <div key={stage.id}>{content}</div>
           );
         })}
-        </div>
       </div>
-    </main>
+    </div>
   );
 }
 

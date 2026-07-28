@@ -16,14 +16,14 @@ before testing any of this — none of the new pieces exist in your actual
 database yet. (I can't do this step myself: this sandbox's network access
 doesn't reach supabase.co.)
 
-**Also new this session:** `supabase/patch-start-from-any-stage.sql` — a
-separate, smaller script for the "start tracking from any stage" feature
-(see below). If you're running the full `schema.sql` fresh on a brand-new
-database, you don't need this patch too — it's already folded in. If your
-database already exists and you're just picking up what's new, run this
-patch on top of it once (same idea as the earlier sign-off fix's patch
-file). It's been tested both ways — fresh and as a patch on the old
-schema — and produces identical results either way.
+**Also new this session:** `supabase/patch-floor-based-stages-and-permissions.sql`
+— replaces the fixed 6-stage list with the real, floor-based construction
+sequence, and enforces the finalized permission model (only the project's
+designer can judge or sign off; verification required to become one).
+Same deal as the earlier patches — already folded into `schema.sql` for a
+from-scratch build; run this on top of an existing database that's missing
+it. Tested both ways: from scratch, and as a patch applied to a copy of
+the actual currently-live database.
 
 ## What's actually working right now
 
@@ -280,3 +280,108 @@ things settle.
 can't reach supabase.co directly, so `patch-start-from-any-stage.sql` needs
 to be run in the Supabase SQL editor before the new stage-picker will
 actually work against real data.
+
+**Superseded note:** the fixed 6-stage list this section describes
+(Foundation → Steel → RCC Casting → Brickwork → Plastering → Finishing) no
+longer exists — see the next section below. The *mechanism* described here
+(not_tracked, the designer/admin approval gate, why the old trigger had to
+go) all still applies exactly as written; only the actual list of stages
+changed underneath it.
+
+## Build session — the real construction sequence, and the finalized permission model
+
+Everything in this section came directly from the architect using this
+platform, narrated stage by stage over several messages, reflected back
+and corrected wherever they said so — not written from general
+construction knowledge. Two changes, both large, both fully tested.
+
+### The stage list is now the real one, not a simplification
+
+The old placeholder list (Foundation → Steel → RCC Casting → Brickwork →
+Plastering → Finishing) is gone. In its place:
+
+**Foundation** (once, whole building — underground work only):
+Site Layout → Excavation & Soil Test → PCC → Footing Steel → Footing
+Concreting → Plinth Beam Steel → Plinth Beam Concreting.
+
+**Then, per floor** (this whole cycle repeats — Ground Floor exists from
+the start, further floors added one at a time via "Add Next Floor" as
+construction actually reaches them, never all pre-created upfront):
+Column (steel → concrete) → Brickwork → Lintel → Slab & Beam
+(steel → concrete) → Plastering (first coat → final coat).
+
+There is no separate "Finishing" stage. Once a floor's final plaster coat
+is signed off, this app's involvement with that floor ends — flooring,
+painting, fixtures, and everything after are deliberately out of scope,
+by design, not an oversight.
+
+"Add Next Floor" only unlocks once the *current* top floor's Slab & Beam
+has actually been signed off — matches the real sequence (the next
+floor's columns don't start until the floor below is cast and cured), not
+just a UI nicety.
+
+Joining a project already several floors into construction is handled at
+creation time: specify how many floors already exist, and the starting-
+stage picker covers all of them, same "not_tracked before, in_progress at
+the chosen point" mechanism as before.
+
+### The finalized permission model
+
+- **Anyone** can create a project, in any role.
+- **Only that project's creator** can add other people to it — this was
+  already exactly how the database worked, no change needed there.
+- **Only the project's nominated designer** — the Engineer or Architect
+  actually flagged as designer for that specific project, not just anyone
+  holding that role — can mark a checkpoint Pass/Fail/Flag, or sign off.
+  This is new: previously only the final sign-off was restricted this way;
+  now day-to-day checkpoint judgment is too.
+- **Everyone else** — Contractor, Owner, and even a second Engineer or
+  Architect who isn't the nominated designer — can still attach photos
+  freely. This was always a separate table (`checkpoint_evidence`) from
+  checkpoint status, so restricting one didn't require touching the other.
+- **Becoming eligible to be nominated as designer at all** now requires
+  the right role *and* `license_verified = true` on that account — not
+  role alone. Granting that verification remains a direct-database action
+  for now (same situation as granting admin status itself already was),
+  by explicit choice rather than building an approval screen just yet.
+- An **Add Member** form now exists on each project's page — looks up an
+  existing registered account by email (they must already have signed up;
+  there's no invite-a-stranger flow) and confirms their role before
+  adding them.
+
+### Tested rigorously, including three bugs caught in the testing itself, not the code
+
+Every piece above was checked against real Postgres with row-level
+security genuinely enforced — not read over and assumed correct. Getting
+there required catching and fixing three real problems in the *test
+setup*, each one worth naming honestly:
+
+1. The first test run showed a Contractor successfully updating a
+   checkpoint's status — which looked like the whole permission model had
+   failed. It turned out the test was connecting as the Postgres
+   superuser, which **bypasses row-level security entirely by default**.
+   Fixed by granting proper privileges to a non-superuser `authenticated`
+   role and switching to it for every test assertion.
+2. A project-creation test then failed with a real RLS violation — but
+   for a boring reason: the test set which user it was acting as *after*
+   trying to create that user's project, not before.
+3. After both fixes, one test still looked like a failure — until
+   checking the actual row directly showed the checkpoint's status hadn't
+   changed at all. The test script's own error-handling was rolling back
+   a result and misreporting it, not the permission check failing. Fixed
+   by checking real before/after state directly instead of relying on
+   whether an exception was thrown, which is the wrong signal for an
+   UPDATE silently filtered by a security policy.
+
+With all three fixed, nine scenarios were run twice — once against a
+fresh database, once as the actual incremental patch applied on top of a
+copy of the real, currently-live database — and both came back completely
+clean, including the negative cases: an unverified engineer cannot become
+a designer even if asked to; a Contractor cannot update checkpoint status
+but can still upload evidence; a Contractor cannot add the next floor; a
+floor cannot be added before its predecessor's Slab & Beam is approved.
+
+**What I could not do myself, and why:** same as every time before — this
+sandbox can't reach supabase.co directly, so
+`supabase/patch-floor-based-stages-and-permissions.sql` needs to be run in
+the Supabase SQL editor before any of this works against real data.

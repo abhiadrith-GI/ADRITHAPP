@@ -112,6 +112,16 @@ create policy "admin can update any profile"
   with check (current_user_is_admin());
 
 -- Auto-create a profile row whenever someone signs up via Supabase Auth.
+--
+-- BUG FIX: previously cast to plain `user_role`, unqualified. That type has
+-- always lived in `public` and always existed - the problem was never that
+-- it was missing, only that this function's search_path (set by whichever
+-- internal connection invokes it) didn't necessarily include `public`,
+-- so Postgres couldn't find it: "type user_role does not exist". This is
+-- exactly why every real signup attempt failed with a 500. Explicitly
+-- qualifying the type, and pinning the function's own search_path so this
+-- can't recur for the same reason again, fixes it for good rather than by
+-- coincidence of whatever connection happens to invoke it.
 create or replace function handle_new_user()
 returns trigger as $$
 begin
@@ -119,11 +129,11 @@ begin
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
-    coalesce((new.raw_user_meta_data ->> 'role')::user_role, 'contractor')
+    coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'contractor')
   );
   return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security definer set search_path = public;
 
 create trigger on_auth_user_created
   after insert on auth.users
@@ -201,6 +211,11 @@ create table checklist_stages (
   order_index int not null,
   status stage_status not null default 'locked',
   unlocked_at timestamptz,
+  -- Null = Foundation (happens once, whole building). 0 = Ground Floor,
+  -- 1 = 1st Floor, 2 = 2nd Floor, and so on — each added on demand via
+  -- add_next_floor as construction actually reaches that point, not all
+  -- pre-created upfront.
+  floor_number int,
   unique (project_id, stage_key)
 );
 
@@ -236,18 +251,12 @@ create policy "members can view checkpoints of their projects"
     or current_user_is_admin()
   );
 
--- Any project member can mark a checkpoint pass/fail/flagged as they work
--- through a stage. Deliberately does NOT allow changing description or
--- standard_reference — those are seeded content, not something a user edits.
-create policy "members can update checkpoint status in their projects"
-  on checkpoints for update
-  to authenticated
-  using (
-    is_project_member((select project_id from checklist_stages where id = stage_id))
-  )
-  with check (
-    is_project_member((select project_id from checklist_stages where id = stage_id))
-  );
+-- Checkpoint status updates (Pass/Fail/Flag) are restricted to this
+-- project's nominated designer only — see the actual policy for this much
+-- further down, right after current_user_is_project_designer is defined
+-- (that function doesn't exist yet at this point in the file). Photo
+-- evidence (checkpoint_evidence, above) is a completely separate table
+-- and stays open to every project member, untouched.
 
 -- ----------------------------------------------------------------------------
 -- 5. CHECKPOINT EVIDENCE  (photos — insert-only, never editable)
@@ -339,6 +348,53 @@ alter table projects add column fee_exempt boolean not null default false;
 -- authority the checklist relies on.
 alter table project_members add column is_project_designer boolean not null default false;
 
+-- Being nominated as a project's designer now requires two things together:
+-- the right role (engineer/architect) AND license_verified = true on that
+-- person's own account. Enforced here, not just in the app's screens —
+-- since any project's creator can add anyone as anything, nothing stops a
+-- client from sending is_project_designer=true for someone who shouldn't
+-- have it, unless the database itself checks. Silently corrects back to
+-- false rather than raising an error, same pattern as
+-- lock_privileged_profile_fields below. Granting license_verified itself
+-- is still an admin-only action either way (see that trigger) — this just
+-- makes sure the designer flag can never be true without it.
+create or replace function enforce_designer_eligibility()
+returns trigger as $$
+declare
+  target_verified boolean;
+begin
+  if new.is_project_designer then
+    select license_verified into target_verified from profiles where id = new.user_id;
+
+    if not (new.role_on_project in ('engineer', 'architect') and coalesce(target_verified, false)) then
+      new.is_project_designer := false;
+    end if;
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger enforce_designer_eligibility_trigger
+  before insert or update on project_members
+  for each row execute function enforce_designer_eligibility();
+
+-- Lets a project's creator look up an already-registered user by email, to
+-- add them as a member (Contractor and Owner accounts must already exist
+-- before they can be added — no invite-by-email-to-a-stranger flow).
+-- Exposes only what's needed for that (name, role, verification status) —
+-- nothing else from auth.users is ever surfaced this way.
+create or replace function find_user_by_email(lookup_email text)
+returns table (id uuid, full_name text, role user_role, license_verified boolean)
+as $$
+  select p.id, p.full_name, p.role, p.license_verified
+  from profiles p
+  join auth.users u on u.id = p.id
+  where lower(u.email) = lower(lookup_email)
+  limit 1;
+$$ language sql security definer stable;
+
+grant execute on function find_user_by_email(text) to authenticated;
+
 -- Lets a project start tracking from any of the six stages, not only
 -- Foundation — for a firm joining mid-construction (e.g. the slab is
 -- already poured). Null/'foundation' is the ordinary default start, no
@@ -348,6 +404,12 @@ alter table project_members add column is_project_designer boolean not null defa
 -- and approve_project_start_stage further below.
 alter table projects add column requested_start_stage_key text;
 alter table projects add column start_stage_pending boolean not null default false;
+-- How many floors already exist above Ground when a project starts
+-- mid-construction (0 = just Ground Floor, the ordinary default for a
+-- brand-new build). Only read once, at initial seeding — further floors
+-- beyond this are added later via add_next_floor as construction reaches
+-- them, not by changing this number after the fact.
+alter table projects add column requested_floor_count int not null default 0;
 
 -- Only the platform admin may toggle fee_exempt — same enforcement pattern
 -- as the existing lock_privileged_profile_fields trigger on profiles.
@@ -372,7 +434,14 @@ create policy "admin can update any project"
   with check (current_user_is_admin());
 
 -- ----------------------------------------------------------------------------
--- Stage + checkpoint templates, auto-created whenever a project is created.
+-- Stage + checkpoint templates. Two parts now, not one fixed list:
+--   1. Foundation — happens once, whole building, seeded at project creation.
+--   2. A per-floor template — the same five stages repeat for every floor
+--      (Ground, 1st, 2nd, ...), each floor's stages only created once
+--      construction actually reaches that floor (see add_next_floor below),
+--      except however many floors already exist when a project starts
+--      mid-construction (see initial_floor_count in the seeding function).
+--
 -- Checkpoints are written in plain language first (what the contractor
 -- actually reads), with the IS-code reference as secondary/supporting
 -- detail for the reviewing engineer — never the other way round. Every
@@ -380,65 +449,71 @@ create policy "admin can update any project"
 -- done?) — a manually-marked layout passes exactly the same as an
 -- instrument-marked one, provided the result is right.
 --
--- HONEST LIMITATION: Finishing-stage checkpoints are seeded with only two
--- general items below. This stage is far more variable project-to-project
--- than the first five (painting, fittings, fixtures differ enormously by
--- project) and — as already discussed — genuinely needs its own dedicated
--- research pass before real checkpoints are written for it. Do not treat
--- the two seeded here as complete.
+-- This structure — and every checkpoint in it — came directly from the
+-- architect using this platform, stage by stage, confirmed back to them
+-- and corrected where they said so, not written from general research.
 -- ----------------------------------------------------------------------------
--- start_stage_key defaults to 'foundation' — the ordinary case, unchanged
--- from before: every stage locked except Foundation, which is in_progress.
--- Passing any other valid key marks every stage before it 'not_tracked'
--- (not 'locked' — it will never unlock, since it's being deliberately
--- skipped, not waited on), the chosen stage 'in_progress', and everything
--- after it 'locked' exactly as before.
 create or replace function create_default_stages_and_checkpoints(
   target_project_id uuid,
-  start_stage_key text default 'foundation'
+  start_stage_key text default 'layout',
+  initial_floor_count int default 0
 )
 returns void as $$
 declare
-  stage_defs jsonb := '[
-    {"key":"foundation","name":"Foundation","checkpoints":[
-      {"d":"Confirm excavation depth and layout match the approved drawing","r":"Per structural drawing"},
-      {"d":"Confirm the soil at the base looks firm and undisturbed, with no loose fill or standing water","r":"IS 1904"},
+  foundation_defs jsonb := '[
+    {"key":"layout","name":"Site Layout","checkpoints":[
+      {"d":"Confirm the building layout and column centre-lines match the approved drawing","r":"Per structural drawing"}
+    ]},
+    {"key":"excavation_soil","name":"Excavation & Soil Test","checkpoints":[
+      {"d":"Confirm excavation depth matches the drawing, and the soil at the base looks firm and undisturbed, with no loose fill or standing water","r":"IS 1904"}
+    ]},
+    {"key":"pcc","name":"PCC","checkpoints":[
       {"d":"Confirm the plain cement concrete (PCC) base layer is laid evenly before footing steel starts","r":"IS 456:2000"}
     ]},
-    {"key":"steel","name":"Steel Reinforcement","checkpoints":[
-      {"d":"Confirm the TMT bar grade matches the drawing — check the rolled markings on the bars themselves","r":"IS 1786"},
-      {"d":"Confirm the gap between the steel and the outer edge (cover) matches the required minimum","r":"IS 456:2000, Table 16"},
-      {"d":"Confirm bar spacing and overlap length look consistent with the drawing","r":"IS 456:2000"}
+    {"key":"footing_steel","name":"Footing Steel","checkpoints":[
+      {"d":"Confirm footing reinforcement — bar diameter, spacing, and cover — matches the drawing","r":"IS 456:2000, Table 16"}
     ]},
-    {"key":"rcc_casting","name":"RCC Casting","checkpoints":[
-      {"d":"Confirm the concrete grade/mix matches what is specified for this element","r":"IS 456:2000"},
-      {"d":"Confirm a cube sample was taken during this pour, for later strength testing","r":"IS 456:2000"},
-      {"d":"Confirm the pour was continuous, with no long unplanned gaps","r":"IS 456:2000"},
-      {"d":"Confirm curing (keeping the concrete wet) has actually started","r":"IS 456:2000"}
+    {"key":"footing_concrete","name":"Footing Concreting","checkpoints":[
+      {"d":"Confirm the concrete grade matches the drawing, a cube sample was taken, and curing has started","r":"IS 456:2000"}
+    ]},
+    {"key":"plinth_beam_steel","name":"Plinth Beam Steel","checkpoints":[
+      {"d":"Confirm plinth beam reinforcement — bar diameter, spacing, and lap length — matches the drawing","r":"IS 456:2000"}
+    ]},
+    {"key":"plinth_beam_concrete","name":"Plinth Beam Concreting","checkpoints":[
+      {"d":"Confirm the plinth beam concrete grade matches the drawing, a cube sample was taken, and curing has started","r":"IS 456:2000"}
+    ]}
+  ]'::jsonb;
+  floor_defs jsonb := '[
+    {"key":"column","name":"Column","checkpoints":[
+      {"d":"Confirm column reinforcement — bar diameter, spacing, and ties — matches the drawing","r":"IS 456:2000"},
+      {"d":"Confirm the concrete grade matches the drawing, a cube sample was taken, and curing has started","r":"IS 456:2000"}
     ]},
     {"key":"brickwork","name":"Brickwork","checkpoints":[
-      {"d":"Confirm the brick or block type matches what is specified","r":"IS 1077 / IS 2212"},
-      {"d":"Confirm mortar joints look consistent in thickness, not overly thick or uneven","r":"IS 2212"},
-      {"d":"Confirm the wall looks vertically straight (plumb), not visibly leaning","r":"IS 2212"}
+      {"d":"Confirm brick/block type, mortar joint thickness, and wall plumb (verticality) are all consistent with the specification","r":"IS 2212"}
+    ]},
+    {"key":"lintel","name":"Lintel","checkpoints":[
+      {"d":"Confirm lintel reinforcement and bearing length over the opening match the drawing before concreting","r":"IS 456:2000"}
+    ]},
+    {"key":"slab_beam","name":"Slab & Beam","checkpoints":[
+      {"d":"Confirm slab and beam reinforcement, spacing, and cover match the drawing","r":"IS 456:2000"},
+      {"d":"Confirm the concrete grade matches the drawing, a cube sample was taken, and curing has started","r":"IS 456:2000"}
     ]},
     {"key":"plastering","name":"Plastering","checkpoints":[
-      {"d":"Confirm the wall surface was properly cleaned and wetted before plastering started","r":"IS 1661"},
-      {"d":"Confirm plaster thickness looks consistent, without visibly thin or thick patches","r":"IS 1661"},
-      {"d":"Confirm no visible cracking has appeared after initial curing","r":"IS 2402"}
-    ]},
-    {"key":"finishing","name":"Finishing","checkpoints":[
-      {"d":"Confirm finishing work matches what the owner and designer agreed on","r":"Project-specific — see note"},
-      {"d":"Confirm the space is genuinely ready for handover (clean, functional, nothing visibly incomplete)","r":"Project-specific — see note"}
+      {"d":"Confirm the wall surface was properly cleaned and wetted, and the first coat thickness looks consistent","r":"IS 1661"},
+      {"d":"Confirm the final coat is complete, with no visible cracking after initial curing","r":"IS 2402"}
     ]}
   ]'::jsonb;
   stage jsonb;
   cp jsonb;
   new_stage_id uuid;
   idx int := 0;
+  floor_num int;
+  floor_label text;
   reached_start boolean := false;
   computed_status stage_status;
 begin
-  for stage in select * from jsonb_array_elements(stage_defs)
+  -- Foundation first — floor_number is null, happens once.
+  for stage in select * from jsonb_array_elements(foundation_defs)
   loop
     if stage->>'key' = start_stage_key then
       computed_status := 'in_progress';
@@ -449,14 +524,10 @@ begin
       computed_status := 'not_tracked';
     end if;
 
-    insert into checklist_stages (project_id, stage_key, display_name, order_index, status, unlocked_at)
+    insert into checklist_stages (project_id, stage_key, display_name, order_index, status, unlocked_at, floor_number)
     values (
-      target_project_id,
-      stage->>'key',
-      stage->>'name',
-      idx,
-      computed_status,
-      case when computed_status = 'in_progress' then now() else null end
+      target_project_id, stage->>'key', stage->>'name', idx, computed_status,
+      case when computed_status = 'in_progress' then now() else null end, null
     )
     returning id into new_stage_id;
 
@@ -469,11 +540,157 @@ begin
     idx := idx + 1;
   end loop;
 
+  -- Then each floor already known to exist (0 = Ground, 1 = 1st, ...) — for
+  -- an ordinary new project this is just Ground Floor (initial_floor_count
+  -- defaults to 0). Joining a project already several floors in seeds all
+  -- of them at once here; anything further comes later via add_next_floor.
+  for floor_num in 0..initial_floor_count loop
+    floor_label := case floor_num
+      when 0 then 'Ground Floor'
+      when 1 then '1st Floor'
+      when 2 then '2nd Floor'
+      when 3 then '3rd Floor'
+      else floor_num || 'th Floor'
+    end;
+
+    for stage in select * from jsonb_array_elements(floor_defs)
+    loop
+      if 'f' || floor_num || '_' || (stage->>'key') = start_stage_key then
+        computed_status := 'in_progress';
+        reached_start := true;
+      elsif reached_start then
+        computed_status := 'locked';
+      else
+        computed_status := 'not_tracked';
+      end if;
+
+      insert into checklist_stages (project_id, stage_key, display_name, order_index, status, unlocked_at, floor_number)
+      values (
+        target_project_id,
+        'f' || floor_num || '_' || (stage->>'key'),
+        floor_label || ' — ' || (stage->>'name'),
+        idx, computed_status,
+        case when computed_status = 'in_progress' then now() else null end,
+        floor_num
+      )
+      returning id into new_stage_id;
+
+      for cp in select * from jsonb_array_elements(stage->'checkpoints')
+      loop
+        insert into checkpoints (stage_id, description, standard_reference, order_index)
+        values (new_stage_id, cp->>'d', cp->>'r', 0);
+      end loop;
+
+      idx := idx + 1;
+    end loop;
+  end loop;
+
   if not reached_start then
-    raise exception 'Invalid start_stage_key: % is not one of the six stage keys', start_stage_key;
+    raise exception 'Invalid start_stage_key: % is not one of the seeded stages', start_stage_key;
   end if;
 end;
 $$ language plpgsql security definer;
+
+-- Adds the next floor's five stages (Column, Brickwork, Lintel, Slab & Beam,
+-- Plastering) once construction actually reaches that point. Only this
+-- project's nominated designer or a platform admin can call it, and only
+-- once the current topmost floor's Slab & Beam has actually been signed
+-- off — matches real sequence: the next floor's columns don't start until
+-- the floor below is cast and cured.
+create or replace function add_next_floor(target_project_id uuid)
+returns void as $$
+declare
+  current_max_floor int;
+  next_floor int;
+  floor_label text;
+  slab_beam_status stage_status;
+  stage jsonb;
+  cp jsonb;
+  new_stage_id uuid;
+  next_order int;
+  floor_defs jsonb := '[
+    {"key":"column","name":"Column","checkpoints":[
+      {"d":"Confirm column reinforcement — bar diameter, spacing, and ties — matches the drawing","r":"IS 456:2000"},
+      {"d":"Confirm the concrete grade matches the drawing, a cube sample was taken, and curing has started","r":"IS 456:2000"}
+    ]},
+    {"key":"brickwork","name":"Brickwork","checkpoints":[
+      {"d":"Confirm brick/block type, mortar joint thickness, and wall plumb (verticality) are all consistent with the specification","r":"IS 2212"}
+    ]},
+    {"key":"lintel","name":"Lintel","checkpoints":[
+      {"d":"Confirm lintel reinforcement and bearing length over the opening match the drawing before concreting","r":"IS 456:2000"}
+    ]},
+    {"key":"slab_beam","name":"Slab & Beam","checkpoints":[
+      {"d":"Confirm slab and beam reinforcement, spacing, and cover match the drawing","r":"IS 456:2000"},
+      {"d":"Confirm the concrete grade matches the drawing, a cube sample was taken, and curing has started","r":"IS 456:2000"}
+    ]},
+    {"key":"plastering","name":"Plastering","checkpoints":[
+      {"d":"Confirm the wall surface was properly cleaned and wetted, and the first coat thickness looks consistent","r":"IS 1661"},
+      {"d":"Confirm the final coat is complete, with no visible cracking after initial curing","r":"IS 2402"}
+    ]}
+  ]'::jsonb;
+begin
+  if not (current_user_is_project_designer(target_project_id) or current_user_is_admin()) then
+    raise exception 'Only this project''s nominated designer or a platform admin can add the next floor.';
+  end if;
+
+  select max(floor_number) into current_max_floor
+  from checklist_stages where project_id = target_project_id and floor_number is not null;
+
+  if current_max_floor is null then
+    raise exception 'This project has no floors seeded yet.';
+  end if;
+
+  select status into slab_beam_status
+  from checklist_stages
+  where project_id = target_project_id and floor_number = current_max_floor and stage_key like '%_slab_beam';
+
+  if slab_beam_status is distinct from 'approved' then
+    raise exception 'The current top floor''s Slab & Beam must be signed off before adding the next floor.';
+  end if;
+
+  next_floor := current_max_floor + 1;
+  floor_label := case next_floor
+    when 1 then '1st Floor' when 2 then '2nd Floor' when 3 then '3rd Floor'
+    else next_floor || 'th Floor'
+  end;
+
+  select coalesce(max(order_index), -1) + 1 into next_order
+  from checklist_stages where project_id = target_project_id;
+
+  for stage in select * from jsonb_array_elements(floor_defs)
+  loop
+    insert into checklist_stages (project_id, stage_key, display_name, order_index, status, unlocked_at, floor_number)
+    values (
+      target_project_id,
+      'f' || next_floor || '_' || (stage->>'key'),
+      floor_label || ' — ' || (stage->>'name'),
+      next_order,
+      'locked',
+      null,
+      next_floor
+    )
+    returning id into new_stage_id;
+
+    for cp in select * from jsonb_array_elements(stage->'checkpoints')
+    loop
+      insert into checkpoints (stage_id, description, standard_reference, order_index)
+      values (new_stage_id, cp->>'d', cp->>'r', 0);
+    end loop;
+
+    next_order := next_order + 1;
+  end loop;
+
+  -- The new floor's first stage (Column) starts in_progress immediately —
+  -- the gate condition (previous floor's Slab & Beam approved) was already
+  -- checked above before any of this ran. Everything after it starts
+  -- locked and unlocks in turn via the existing sign-off trigger.
+  update checklist_stages set status = 'in_progress', unlocked_at = now()
+    where project_id = target_project_id and floor_number = next_floor
+      and order_index = (select min(order_index) from checklist_stages where project_id = target_project_id and floor_number = next_floor);
+end;
+$$ language plpgsql security definer;
+
+grant execute on function add_next_floor(uuid) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- Stage seeding used to run automatically via an on_project_created trigger,
@@ -499,17 +716,19 @@ create or replace function finalize_project_setup(target_project_id uuid)
 returns void as $$
 declare
   requested_key text;
+  requested_floors int;
 begin
-  select requested_start_stage_key into requested_key
+  select requested_start_stage_key, requested_floor_count
+    into requested_key, requested_floors
   from projects where id = target_project_id;
 
-  if requested_key is null or requested_key = 'foundation' then
-    perform create_default_stages_and_checkpoints(target_project_id, 'foundation');
+  if requested_key is null or requested_key = 'layout' then
+    perform create_default_stages_and_checkpoints(target_project_id, 'layout', coalesce(requested_floors, 0));
     return;
   end if;
 
   if current_user_is_project_designer(target_project_id) or current_user_is_admin() then
-    perform create_default_stages_and_checkpoints(target_project_id, requested_key);
+    perform create_default_stages_and_checkpoints(target_project_id, requested_key, coalesce(requested_floors, 0));
   else
     update projects set start_stage_pending = true where id = target_project_id;
   end if;
@@ -527,6 +746,7 @@ create or replace function approve_project_start_stage(target_project_id uuid)
 returns void as $$
 declare
   requested_key text;
+  requested_floors int;
   already_seeded boolean;
 begin
   if not (current_user_is_project_designer(target_project_id) or current_user_is_admin()) then
@@ -538,10 +758,13 @@ begin
     raise exception 'This project''s stages have already been set up.';
   end if;
 
-  select requested_start_stage_key into requested_key
+  select requested_start_stage_key, requested_floor_count
+    into requested_key, requested_floors
   from projects where id = target_project_id;
 
-  perform create_default_stages_and_checkpoints(target_project_id, coalesce(requested_key, 'foundation'));
+  perform create_default_stages_and_checkpoints(
+    target_project_id, coalesce(requested_key, 'layout'), coalesce(requested_floors, 0)
+  );
 
   update projects set start_stage_pending = false where id = target_project_id;
 end;
@@ -637,4 +860,23 @@ create policy "only the project's nominated designer can sign off"
   with check (
     user_id = auth.uid()
     and current_user_is_project_designer((select project_id from checklist_stages where id = stage_id))
+  );
+
+-- Same authority as sign-off, extended to day-to-day checkpoint status too
+-- (Pass/Fail/Flag) — reflecting the later decision that only this
+-- project's nominated designer finalizes anything, not just the final
+-- stage sign-off. Everyone else on the project can still attach photos
+-- freely (checkpoint_evidence, a separate table, untouched by this).
+drop policy if exists "members can update checkpoint status in their projects" on checkpoints;
+
+create policy "only the project's designer can update checkpoint status"
+  on checkpoints for update
+  to authenticated
+  using (
+    current_user_is_project_designer((select project_id from checklist_stages where id = stage_id))
+    or current_user_is_admin()
+  )
+  with check (
+    current_user_is_project_designer((select project_id from checklist_stages where id = stage_id))
+    or current_user_is_admin()
   );

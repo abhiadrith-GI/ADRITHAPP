@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { DEFAULT_STAGES, type UserRole } from "@/types/database";
+import { buildStartingStageOptions, type UserRole } from "@/types/database";
 import { RingBackground } from "@/components/ring-background";
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -22,13 +22,15 @@ export default function NewProjectPage() {
   const [location, setLocation] = useState("");
   const [roleOnProject, setRoleOnProject] = useState<UserRole>("engineer");
   const [isDesigner, setIsDesigner] = useState(true);
-  const [startStageKey, setStartStageKey] = useState<string>(DEFAULT_STAGES[0].key);
+  const [existingFloorCount, setExistingFloorCount] = useState(0);
+  const [startStageKey, setStartStageKey] = useState<string>("layout");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const canBeDesigner = roleOnProject === "engineer" || roleOnProject === "architect";
   const willBeDesigner = canBeDesigner && isDesigner;
-  const startsAtFoundation = startStageKey === DEFAULT_STAGES[0].key;
+  const startsAtLayout = startStageKey === "layout";
+  const stageOptions = buildStartingStageOptions(existingFloorCount);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -56,7 +58,8 @@ export default function NewProjectPage() {
         name: name.trim(),
         location: location.trim() || null,
         created_by: user.id,
-        requested_start_stage_key: startsAtFoundation ? null : startStageKey,
+        requested_start_stage_key: startsAtLayout ? null : startStageKey,
+        requested_floor_count: existingFloorCount,
       })
       .select("id")
       .single();
@@ -161,28 +164,43 @@ export default function NewProjectPage() {
             </label>
           )}
 
+          <Field label="Does this building already have any completed floors?">
+            <input
+              type="number"
+              min={0}
+              value={existingFloorCount}
+              onChange={(e) => {
+                const next = Math.max(0, parseInt(e.target.value, 10) || 0);
+                setExistingFloorCount(next);
+                setStartStageKey("layout");
+              }}
+              className="w-full rounded-lg border border-white/20 bg-[var(--adrith-card)] px-3 py-2.5 text-sm outline-none"
+            />
+            <p className="mt-1.5 text-xs text-[var(--adrith-dim-2)]">
+              0 if this is a fresh start — Ground Floor only exists either
+              way. Only count floors above Ground that already exist right
+              now; anything further gets added later, floor by floor, as
+              construction actually reaches it.
+            </p>
+          </Field>
+
           <Field label="Starting stage">
-            <div className="flex flex-col gap-2">
-              {DEFAULT_STAGES.map((stage) => (
-                <button
-                  key={stage.key}
-                  type="button"
-                  onClick={() => setStartStageKey(stage.key)}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm ${
-                    startStageKey === stage.key
-                      ? "border-[var(--adrith-rust)] text-[var(--adrith-rust)]"
-                      : "border-white/20 text-[var(--adrith-off-white)]"
-                  }`}
-                >
-                  {stage.name}
-                </button>
+            <select
+              value={startStageKey}
+              onChange={(e) => setStartStageKey(e.target.value)}
+              className="w-full rounded-lg border border-white/20 bg-[var(--adrith-card)] px-3 py-2.5 text-sm outline-none"
+            >
+              {stageOptions.map((opt) => (
+                <option key={opt.key} value={opt.key}>
+                  {opt.label}
+                </option>
               ))}
-            </div>
-            {!startsAtFoundation && (
+            </select>
+            {!startsAtLayout && (
               <p className="mt-1.5 text-xs text-[var(--adrith-dim-2)]">
                 {willBeDesigner
-                  ? "Stages before this one will show as not tracked. Since you're this project's designer, it applies right away."
-                  : "Stages before this one will show as not tracked. Since you're not this project's designer, it'll need to be confirmed by the designer or a platform admin before the checklist starts."}
+                  ? "Everything before this will show as not tracked. Since you're this project's designer, it applies right away."
+                  : "Everything before this will show as not tracked. Since you're not this project's designer, it'll need to be confirmed by the designer or a platform admin before the checklist starts."}
               </p>
             )}
           </Field>

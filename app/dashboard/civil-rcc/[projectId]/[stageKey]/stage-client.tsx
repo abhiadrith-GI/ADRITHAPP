@@ -114,6 +114,7 @@ export default function StageClient({
               evidence={localEvidence.filter((e) => e.checkpoint_id === cp.id)}
               onStatusChange={(status) => updateCheckpointStatus(cp.id, status)}
               onTakePhoto={() => setActiveCamera(cp.id)}
+              canJudge={canSignOff}
             />
           ))}
         </div>
@@ -142,11 +143,14 @@ function CheckpointCard({
   evidence,
   onStatusChange,
   onTakePhoto,
+  canJudge,
 }: {
   checkpoint: Checkpoint;
   evidence: CheckpointEvidence[];
   onStatusChange: (status: Checkpoint["status"]) => void;
   onTakePhoto: () => void;
+  /** Only this project's designer (or admin) can mark Pass/Fail/Flag — everyone else can still attach photos. */
+  canJudge: boolean;
 }) {
   return (
     <div className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4">
@@ -172,22 +176,31 @@ function CheckpointCard({
         >
           📷 Take Photo
         </button>
-        <StatusButton
-          label="Pass"
-          active={checkpoint.status === "pass"}
-          onClick={() => onStatusChange("pass")}
-        />
-        <StatusButton
-          label="Fail"
-          active={checkpoint.status === "fail"}
-          onClick={() => onStatusChange("fail")}
-        />
-        <StatusButton
-          label="Flag"
-          active={checkpoint.status === "flagged"}
-          onClick={() => onStatusChange("flagged")}
-        />
+        {canJudge && (
+          <>
+            <StatusButton
+              label="Pass"
+              active={checkpoint.status === "pass"}
+              onClick={() => onStatusChange("pass")}
+            />
+            <StatusButton
+              label="Fail"
+              active={checkpoint.status === "fail"}
+              onClick={() => onStatusChange("fail")}
+            />
+            <StatusButton
+              label="Flag"
+              active={checkpoint.status === "flagged"}
+              onClick={() => onStatusChange("flagged")}
+            />
+          </>
+        )}
       </div>
+      {!canJudge && (
+        <p className="mt-2 text-[11px] text-[var(--adrith-dim-2)]">
+          Only this project&apos;s designer can mark Pass, Fail, or Flag.
+        </p>
+      )}
     </div>
   );
 }
