@@ -62,25 +62,37 @@ create or replace function lock_privileged_profile_fields()
 returns trigger as $$
 declare
   requester_is_admin boolean;
-  is_service_role boolean;
+  has_jwt_context boolean;
 begin
+  -- Direct database access (the Supabase SQL Editor, or any other direct
+  -- connection) never carries a JWT at all - no request.jwt.claims, no
+  -- auth.uid(). That's deliberately the one path allowed to grant these
+  -- fields, since it's exactly how the very first admin has to be
+  -- bootstrapped - nothing in the app itself can grant admin status, by
+  -- design (see make-me-admin.sql). A request arriving WITH a JWT is a
+  -- real, authenticated app user; for that path, only an existing admin
+  -- can change these fields, never a regular user granting themselves
+  -- anything.
+  --
+  -- coalesce()'d on both checks below so a missing/null value is treated
+  -- as "not admin" / "no JWT" (fail closed) rather than silently passing
+  -- through via SQL's three-valued NULL logic (fail open). An earlier
+  -- version of this function coalesced the service-role check but not
+  -- this one - which is exactly why, when run from the SQL Editor,
+  -- license_verified and role were slipping through unprotected while
+  -- is_platform_admin stayed correctly blocked: requester_is_admin came
+  -- back NULL (auth.uid() matches no row outside a real session), and
+  -- "if not NULL" silently skips the whole block instead of enforcing it.
+  has_jwt_context := coalesce(auth.jwt(), '{}'::jsonb) != '{}'::jsonb;
+
   select coalesce(is_platform_admin, false) into requester_is_admin
   from profiles where id = auth.uid();
+  requester_is_admin := coalesce(requester_is_admin, false);
 
-  -- coalesce()'d so a missing/null role claim is treated as "not
-  -- service_role" (fail closed) rather than short-circuiting the check via
-  -- SQL's three-valued NULL logic (which would fail open). This exact bug
-  -- was caught by testing this trigger against a simulated session before
-  -- ever shipping it.
-  is_service_role := coalesce(auth.jwt() ->> 'role', '') = 'service_role';
-
-  if not is_service_role then
+  if has_jwt_context and not requester_is_admin then
+    new.role := old.role;
     new.is_platform_admin := old.is_platform_admin;
-
-    if not requester_is_admin then
-      new.role := old.role;
-      new.license_verified := old.license_verified;
-    end if;
+    new.license_verified := old.license_verified;
   end if;
 
   return new;
@@ -403,6 +415,57 @@ create table sign_offs (
   confirmation_text text not null,
   signed_at timestamptz not null default now()
 );
+
+-- ----------------------------------------------------------------------------
+-- ISOMETRIC VIEW TOOL
+-- Two bases: "top_view" (Actual Top View - exact, vector-PDF-only
+-- reproduction) and "furniture_layout" (AI-suggested furniture
+-- arrangement from a PDF, room photo, or 3D plan photo). Open to any
+-- logged-in user - no role restriction, unlike Civil & RCC.
+-- ----------------------------------------------------------------------------
+create table if not exists isometric_generations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles (id),
+  base text not null check (base in ('top_view', 'furniture_layout')),
+  input_storage_path text not null,
+  output_storage_path text,
+  status text not null default 'pending'
+    check (status in ('pending', 'done', 'failed', 'rejected_not_vector')),
+  rejection_reason text,
+  created_at timestamptz not null default now()
+);
+
+alter table isometric_generations enable row level security;
+
+drop policy if exists "users can view their own generations" on isometric_generations;
+drop policy if exists "users can insert their own generations" on isometric_generations;
+
+create policy "users can view their own generations"
+  on isometric_generations for select
+  to authenticated
+  using (user_id = auth.uid() or current_user_is_admin());
+
+create policy "users can insert their own generations"
+  on isometric_generations for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+-- Rejected (not-a-genuine-vector-PDF) attempts don't count against the
+-- daily limit - only real, processed generations do. A person mistakenly
+-- uploading a scan shouldn't lose one of their 5 for that alone. Takes
+-- which base to check, since Top View and Furniture Layout each track
+-- their own separate 5-per-day allowance, not a shared one.
+create or replace function isometric_generations_remaining_today(target_user_id uuid, target_base text)
+returns int as $$
+  select greatest(0, 5 - count(*)::int)
+  from isometric_generations
+  where user_id = target_user_id
+    and base = target_base
+    and status != 'rejected_not_vector'
+    and created_at >= date_trunc('day', now());
+$$ language sql security definer stable;
+
+grant execute on function isometric_generations_remaining_today(uuid, text) to authenticated;
 
 alter table sign_offs enable row level security;
 
@@ -983,6 +1046,34 @@ create policy "members can upload evidence files to their projects"
   );
 -- No update/delete policy here either — same immutability rule as the
 -- checkpoint_evidence table row that points at this file.
+
+-- ----------------------------------------------------------------------------
+-- Storage bucket for the Isometric View tool. Private, scoped per-user
+-- (not per-project - this tool isn't tied to any specific project).
+-- Path convention: {user_id}/{generation_id}/input.pdf and .../output.jpg
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('isometric-files', 'isometric-files', false)
+on conflict (id) do nothing;
+
+drop policy if exists "users can view their own isometric files" on storage.objects;
+drop policy if exists "users can upload their own isometric files" on storage.objects;
+
+create policy "users can view their own isometric files"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'isometric-files'
+    and ((storage.foldername(name))[1]::uuid = auth.uid() or current_user_is_admin())
+  );
+
+create policy "users can upload their own isometric files"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'isometric-files'
+    and (storage.foldername(name))[1]::uuid = auth.uid()
+  );
 
 -- ============================================================================
 -- FIX — sign-off was only restricted to the nominated designer in the app's

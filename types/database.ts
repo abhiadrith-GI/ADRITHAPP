@@ -20,6 +20,17 @@ export interface Profile {
   created_at: string;
 }
 
+export interface IsometricGeneration {
+  id: string;
+  user_id: string;
+  base: "top_view" | "furniture_layout";
+  input_storage_path: string;
+  output_storage_path: string | null;
+  status: "pending" | "done" | "failed" | "rejected_not_vector";
+  rejection_reason: string | null;
+  created_at: string;
+}
+
 export interface Project {
   id: string;
   name: string;

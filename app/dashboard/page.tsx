@@ -14,16 +14,17 @@ type Tool = {
   status: "open" | "soon";
 };
 
-// Order and status as last confirmed. Civil & RCC is the only tool with a
-// real, working flow behind it — everything else is fully specified but not
-// yet built, and says so honestly rather than pretending otherwise.
+// Order and status as last confirmed. Civil & RCC and Isometric View now
+// have real, working flows behind them — everything else is fully
+// specified but not yet built, and says so honestly rather than
+// pretending otherwise.
 const TOOLS: Tool[] = [
   {
-    name: "Isometric Floor Plan",
-    description: "Photo or PDF plan → exact isometric view",
+    name: "Isometric View",
+    description: "Exact top view from CAD, plus AI furniture layouts",
     icon: "isometric",
-    href: "/dashboard/isometric",
-    status: "soon",
+    href: "/dashboard/isometric-view",
+    status: "open",
   },
   {
     name: "Vastu Consultation",
