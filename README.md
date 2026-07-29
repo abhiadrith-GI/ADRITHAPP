@@ -385,3 +385,75 @@ floor cannot be added before its predecessor's Slab & Beam is approved.
 sandbox can't reach supabase.co directly, so
 `supabase/patch-floor-based-stages-and-permissions.sql` needs to be run in
 the Supabase SQL editor before any of this works against real data.
+
+## Build session — gallery upload, 2-photo limit, AI precheck
+
+Three changes, requested together, all landing in the checklist's photo
+flow specifically.
+
+**Gallery upload, alongside the existing camera capture, not replacing
+it.** The live camera view (`getUserMedia`) still works exactly as before,
+for anyone who wants the guarantee that a photo was taken right now. A new
+"Choose from Gallery" button sits next to it for picking an existing
+photo instead. Both feed the same upload path.
+
+**2 photos per checkpoint, enforced at the database level.** A trigger on
+`checkpoint_evidence` rejects a third insert for the same checkpoint with
+a plain-language error, not a raw one. The UI also hides both photo
+buttons once a checkpoint already has two, so this is normally never even
+reached — the trigger is the backstop, not the primary control.
+
+**AI precheck, deliberately scoped to what a vision model can honestly
+assess.** After a photo uploads (and only after — nothing here can ever
+block or delay the upload itself, which is already permanent by the time
+this runs), a server-side route sends it to Claude with one narrow
+question: is this photo clear and usable, and does it plausibly show what
+the checkpoint is asking about? It does not attempt to judge structural
+correctness, code compliance, or measurements — that stays entirely the
+designer's call, exactly as already built. The result is advisory only,
+shown next to the photo; it never touches Pass/Fail/Flag.
+
+Storing that result required exactly one new capability:
+`record_ai_precheck`, a function that can only ever write the two new
+`ai_precheck_*` columns — nothing else on that row can be changed through
+it or any other path. Everything that already made evidence permanent
+(the storage path, who uploaded it, when) still can never change, by
+construction, not by convention.
+
+**What genuinely needs your action before the AI piece runs for real:**
+unlike everything else built so far, this needs a live connection to an
+outside AI service, which means a real API key from
+console.anthropic.com — a different kind of credential from GitHub or
+Supabase, and one with actual small ongoing cost per photo. Without that
+key set, the app doesn't break — photos still upload and work completely
+normally, the precheck step is simply skipped. Setting `ANTHROPIC_API_KEY`
+as an environment variable in Netlify (Project configuration → Environment
+variables, same place the Supabase keys already live) is what turns it on.
+
+Tested against real Postgres, RLS genuinely enforced: two photos succeed,
+a third on the same checkpoint is rejected with the intended message,
+`record_ai_precheck` correctly updates only what it should, and someone
+outside the project is correctly blocked from calling it at all. Tested
+twice against a copy of the actual live database — fresh, and applied a
+second time immediately after — both clean.
+
+## Build session — delete project
+
+Only this project's creator can delete it — not the designer, not a
+platform admin, deliberately narrower than every other authority already
+in this app. Blocked entirely, for everyone with no exception, the moment
+any stage has been signed off — that's the line between cleaning up
+something that shouldn't exist and erasing a confirmed record, and it
+isn't negotiable once crossed.
+
+The app shows a two-step confirmation before anything happens, and
+explains plainly when deletion is no longer available rather than just
+hiding the option with no context.
+
+Tested directly against real Postgres: an outsider is blocked outright;
+the creator successfully deletes a project with no sign-offs, and every
+related row — stages, checkpoints, members — genuinely disappears with
+it; that same creator is blocked the instant even one sign-off exists;
+and a platform admin has no override in that case either, confirmed
+directly rather than assumed. Tested against a copy of the real live
+database too, applied twice in a row, both clean.

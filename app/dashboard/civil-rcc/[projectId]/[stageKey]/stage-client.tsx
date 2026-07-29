@@ -70,7 +70,7 @@ export default function StageClient({
     const { data: row, error: insertError } = await supabase
       .from("checkpoint_evidence")
       .insert({ checkpoint_id: checkpointId, storage_path: path, uploaded_by: user.id })
-      .select("id, checkpoint_id, storage_path, uploaded_by, uploaded_at, device_metadata")
+      .select("id, checkpoint_id, storage_path, uploaded_by, uploaded_at, device_metadata, ai_precheck_status, ai_precheck_note")
       .single();
 
     if (insertError) {
@@ -80,6 +80,33 @@ export default function StageClient({
 
     setLocalEvidence((prev) => [...prev, row]);
     setActiveCamera(null);
+
+    // Fire the AI precheck after the photo is already safely uploaded and
+    // permanent - never blocks on this, and any failure here is caught
+    // and recorded server-side without affecting the photo itself.
+    const checkpointDescription = localCheckpoints.find((c) => c.id === checkpointId)?.description;
+    fetch("/api/precheck", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ evidenceId: row.id, storagePath: path, checkpointDescription }),
+    })
+      .then((r) => r.json())
+      .then((result: { status?: string; note?: string }) => {
+        if (result?.status) {
+          setLocalEvidence((prev) =>
+            prev.map((e) =>
+              e.id === row.id
+                ? { ...e, ai_precheck_status: result.status as CheckpointEvidence["ai_precheck_status"], ai_precheck_note: result.note ?? null }
+                : e
+            )
+          );
+        }
+      })
+      .catch(() => {
+        // Precheck is advisory only - a network hiccup here is not worth
+        // surfacing as an error to someone who just successfully uploaded
+        // a photo.
+      });
   }
 
   const allAddressed =
@@ -114,6 +141,7 @@ export default function StageClient({
               evidence={localEvidence.filter((e) => e.checkpoint_id === cp.id)}
               onStatusChange={(status) => updateCheckpointStatus(cp.id, status)}
               onTakePhoto={() => setActiveCamera(cp.id)}
+              onGalleryPick={(file) => handleCaptured(cp.id, file)}
               canJudge={canSignOff}
             />
           ))}
@@ -143,15 +171,20 @@ function CheckpointCard({
   evidence,
   onStatusChange,
   onTakePhoto,
+  onGalleryPick,
   canJudge,
 }: {
   checkpoint: Checkpoint;
   evidence: CheckpointEvidence[];
   onStatusChange: (status: Checkpoint["status"]) => void;
   onTakePhoto: () => void;
+  onGalleryPick: (file: File) => void;
   /** Only this project's designer (or admin) can mark Pass/Fail/Flag — everyone else can still attach photos. */
   canJudge: boolean;
 }) {
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const atPhotoLimit = evidence.length >= 2;
+
   return (
     <div className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4">
       <p className="text-sm">{checkpoint.description}</p>
@@ -162,20 +195,58 @@ function CheckpointCard({
       )}
 
       {evidence.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto">
+        <div className="mt-3 flex flex-col gap-2">
           {evidence.map((e) => (
-            <EvidenceThumb key={e.id} storagePath={e.storage_path} />
+            <div key={e.id} className="flex gap-2">
+              <EvidenceThumb storagePath={e.storage_path} />
+              {e.ai_precheck_status === "done" && e.ai_precheck_note && (
+                <p className="flex-1 self-center text-[11px] text-[var(--adrith-dim-2)]">
+                  🤖 {e.ai_precheck_note}
+                </p>
+              )}
+              {e.ai_precheck_status === "pending" && (
+                <p className="flex-1 self-center text-[11px] text-[var(--adrith-dim-2)]">
+                  🤖 Checking photo…
+                </p>
+              )}
+            </div>
           ))}
         </div>
       )}
 
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onGalleryPick(file);
+          e.target.value = "";
+        }}
+      />
+
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          onClick={onTakePhoto}
-          className="rounded-lg border border-[var(--adrith-rust)] px-3 py-1.5 text-xs text-[var(--adrith-rust)]"
-        >
-          📷 Take Photo
-        </button>
+        {atPhotoLimit ? (
+          <p className="text-[11px] text-[var(--adrith-dim-2)]">
+            2 photos already attached — the limit per checkpoint.
+          </p>
+        ) : (
+          <>
+            <button
+              onClick={onTakePhoto}
+              className="rounded-lg border border-[var(--adrith-rust)] px-3 py-1.5 text-xs text-[var(--adrith-rust)]"
+            >
+              📷 Take Photo
+            </button>
+            <button
+              onClick={() => galleryInputRef.current?.click()}
+              className="rounded-lg border border-white/25 px-3 py-1.5 text-xs text-[var(--adrith-off-white)]"
+            >
+              🖼️ Choose from Gallery
+            </button>
+          </>
+        )}
         {canJudge && (
           <>
             <StatusButton
@@ -245,9 +316,12 @@ function EvidenceThumb({ storagePath }: { storagePath: string }) {
 }
 
 /**
- * Camera-only capture — no gallery picker exists anywhere in this component,
- * on purpose. `capture="environment"` plus getUserMedia both point at the
- * rear camera, matching real site-photo use.
+ * Live camera capture via getUserMedia, pointed at the rear camera to
+ * match real site-photo use. Gallery upload now exists too (see
+ * CheckpointCard's "Choose from Gallery" button) as a separate, deliberate
+ * option alongside this one, not merged into it - opening the gallery no
+ * longer guarantees a photo was taken right now, so this live-capture path
+ * stays available for anyone who wants that guarantee for their own record.
  */
 function CameraCapture({
   onCapture,

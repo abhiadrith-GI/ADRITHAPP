@@ -98,11 +98,14 @@ export default async function DashboardPage() {
             Platform Admin
           </span>
         )}
-        {profile?.role !== "owner" && !profile?.is_platform_admin && !profile?.license_verified && (
-          <span className="ml-2 rounded-full border border-[var(--adrith-rust)] px-2 py-0.5 text-[10px] text-[var(--adrith-rust)]">
-            License not yet verified
-          </span>
-        )}
+        {profile?.role !== "owner" &&
+          profile?.role !== "student" &&
+          !profile?.is_platform_admin &&
+          !profile?.license_verified && (
+            <span className="ml-2 rounded-full border border-[var(--adrith-rust)] px-2 py-0.5 text-[10px] text-[var(--adrith-rust)]">
+              License not yet verified
+            </span>
+          )}
       </p>
 
       <div className="relative z-10 mx-auto mt-6 max-w-md">

@@ -26,15 +26,18 @@ function LoginForm() {
       password,
     });
 
-    setLoading(false);
-
     if (signInError) {
+      setLoading(false);
       setError(signInError.message);
       return;
     }
 
+    // Deliberately NOT resetting loading back to false here - the button
+    // staying in "Logging in…" through the redirect is what it should look
+    // like, since the page is navigating away regardless. Turning it back
+    // to a clickable "Log in" state right as navigation starts is exactly
+    // what made this feel like it needed a second click before.
     router.push("/dashboard");
-    router.refresh();
   }
 
   return (

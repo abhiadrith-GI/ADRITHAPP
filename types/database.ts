@@ -1,4 +1,4 @@
-export type UserRole = "owner" | "contractor" | "engineer" | "architect";
+export type UserRole = "owner" | "contractor" | "engineer" | "architect" | "student";
 
 export type StageStatus =
   | "locked"
@@ -60,6 +60,8 @@ export interface CheckpointEvidence {
   uploaded_by: string;
   uploaded_at: string;
   device_metadata: Record<string, unknown> | null;
+  ai_precheck_status: "pending" | "done" | "failed";
+  ai_precheck_note: string | null;
 }
 
 export interface ChecklistStage {

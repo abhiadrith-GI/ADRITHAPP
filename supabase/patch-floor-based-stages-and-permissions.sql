@@ -57,6 +57,8 @@ begin
 end;
 $$ language plpgsql security definer;
 
+drop trigger if exists enforce_designer_eligibility_trigger on project_members;
+
 create trigger enforce_designer_eligibility_trigger
   before insert or update on project_members
   for each row execute function enforce_designer_eligibility();
@@ -379,6 +381,7 @@ $$ language plpgsql security definer;
 grant execute on function approve_project_start_stage(uuid) to authenticated;
 
 drop policy if exists "members can update checkpoint status in their projects" on checkpoints;
+drop policy if exists "only the project's designer can update checkpoint status" on checkpoints;
 
 create policy "only the project's designer can update checkpoint status"
   on checkpoints for update

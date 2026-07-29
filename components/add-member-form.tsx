@@ -10,6 +10,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "contractor", label: "Contractor" },
   { value: "engineer", label: "Engineer" },
   { value: "architect", label: "Architect" },
+  { value: "student", label: "Student" },
 ];
 
 type FoundUser = {

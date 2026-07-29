@@ -6,6 +6,7 @@ import { RingBackground } from "@/components/ring-background";
 import { PendingStartBanner } from "@/components/pending-start-banner";
 import { AddMemberForm } from "@/components/add-member-form";
 import { AddNextFloorButton } from "@/components/add-next-floor-button";
+import { DeleteProjectButton } from "@/components/delete-project-button";
 
 const STATUS_LABEL: Record<ChecklistStage["status"], string> = {
   locked: "Locked",
@@ -31,7 +32,7 @@ export default async function ProjectDetailPage({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, location, requested_start_stage_key, start_stage_pending, requested_floor_count")
+    .select("id, name, location, created_by, requested_start_stage_key, start_stage_pending, requested_floor_count")
     .eq("id", projectId)
     .single();
 
@@ -73,6 +74,7 @@ export default async function ProjectDetailPage({
     (s) => s.floor_number === topFloor && s.stage_key.endsWith("_slab_beam")
   );
   const canAddNextFloor = topFloorSlabBeam?.status === "approved";
+  const hasAnySignOff = stages.some((s) => s.status === "approved");
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
@@ -122,8 +124,22 @@ export default async function ProjectDetailPage({
           <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
             Members
           </p>
-          <AddMemberForm projectId={project.id} />
+          {project.created_by === user.id ? (
+            <AddMemberForm projectId={project.id} />
+          ) : (
+            <p className="text-xs text-[var(--adrith-dim-2)]">
+              Only this project&apos;s creator can add members.
+            </p>
+          )}
         </div>
+
+        {project.created_by === user.id && (
+          <DeleteProjectButton
+            projectId={project.id}
+            projectName={project.name}
+            hasAnySignOff={hasAnySignOff}
+          />
+        )}
       </div>
     </main>
   );

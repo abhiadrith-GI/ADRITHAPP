@@ -103,16 +103,9 @@ function ProjectSection({
                 className="block rounded-xl border border-white/20 bg-[var(--adrith-card)] px-4 py-3"
               >
                 <p className="text-sm font-semibold">{p.name}</p>
-                <div className="mt-0.5 flex items-center gap-2">
-                  {p.location && (
-                    <p className="text-xs text-[var(--adrith-dim-2)]">{p.location}</p>
-                  )}
-                  {p.fee_exempt && (
-                    <span className="rounded-full border border-[var(--adrith-rust)] px-1.5 py-0.5 text-[9px] text-[var(--adrith-rust)]">
-                      Adrith Designs — Free
-                    </span>
-                  )}
-                </div>
+                {p.location && (
+                  <p className="mt-0.5 text-xs text-[var(--adrith-dim-2)]">{p.location}</p>
+                )}
               </Link>
             </li>
           ))}

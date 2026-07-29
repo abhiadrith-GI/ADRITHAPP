@@ -11,6 +11,7 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: "contractor", label: "Contractor" },
   { value: "engineer", label: "Engineer" },
   { value: "architect", label: "Architect" },
+  { value: "student", label: "Student" },
 ];
 
 export default function SignupPage() {
@@ -19,8 +20,21 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("contractor");
+  const [dateOfBirth, setDateOfBirth] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  function isAtLeast18(isoDate: string): boolean {
+    const dob = new Date(isoDate);
+    if (isNaN(dob.getTime())) return false;
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const hasHadBirthdayThisYear =
+      today.getMonth() > dob.getMonth() ||
+      (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+    if (!hasHadBirthdayThisYear) age--;
+    return age >= 18;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,6 +45,11 @@ export default function SignupPage() {
       return;
     }
 
+    if (role === "student" && (!dateOfBirth || !isAtLeast18(dateOfBirth))) {
+      setError("Student accounts are currently only available to those 18 or older.");
+      return;
+    }
+
     setLoading(true);
     const supabase = createClient();
 
@@ -38,13 +57,16 @@ export default function SignupPage() {
       email,
       password,
       options: {
-        data: { full_name: fullName, role },
+        data: {
+          full_name: fullName,
+          role,
+          ...(role === "student" ? { date_of_birth: dateOfBirth } : {}),
+        },
       },
     });
 
-    setLoading(false);
-
     if (signUpError) {
+      setLoading(false);
       setError(signUpError.message);
       return;
     }
@@ -126,6 +148,25 @@ export default function SignupPage() {
               ))}
             </div>
           </div>
+
+          {role === "student" && (
+            <div>
+              <label htmlFor="dateOfBirth" className="mb-1 block text-sm font-medium">
+                Date of birth
+              </label>
+              <input
+                id="dateOfBirth"
+                type="date"
+                required
+                value={dateOfBirth}
+                onChange={(e) => setDateOfBirth(e.target.value)}
+                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-neutral-500">
+                Student accounts are currently only available to those 18 or older.
+              </p>
+            </div>
+          )}
 
           {error && <p className="text-sm text-red-600">{error}</p>}
 

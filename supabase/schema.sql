@@ -22,7 +22,7 @@
 -- One row per auth.users row. Holds app-specific fields Supabase Auth
 -- doesn't store natively (role, license info).
 -- ----------------------------------------------------------------------------
-create type user_role as enum ('owner', 'contractor', 'engineer', 'architect');
+create type user_role as enum ('owner', 'contractor', 'engineer', 'architect', 'student');
 
 create table profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -124,12 +124,32 @@ create policy "admin can update any profile"
 -- coincidence of whatever connection happens to invoke it.
 create or replace function handle_new_user()
 returns trigger as $$
+declare
+  requested_role public.user_role;
+  dob date;
 begin
+  requested_role := coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'contractor');
+
+  -- Student accounts require confirming 18+ - enforced here, not just as
+  -- a UI hint, since under-18 data processing has real, specific legal
+  -- requirements (verifiable parental consent) this app isn't built to
+  -- handle. A malformed or missing date of birth is treated the same as
+  -- failing the check, not as passing it by default. Compares actual
+  -- calendar dates rather than intervals deliberately - Postgres compares
+  -- intervals using an approximate 360-day year, which doesn't reliably
+  -- match real calendar math right at the 18-year boundary.
+  if requested_role = 'student' then
+    dob := (new.raw_user_meta_data ->> 'date_of_birth')::date;
+    if dob is null or dob > (current_date - interval '18 years')::date then
+      raise exception 'Student accounts require confirming you are 18 or older.';
+    end if;
+  end if;
+
   insert into public.profiles (id, full_name, role)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'full_name', ''),
-    coalesce((new.raw_user_meta_data ->> 'role')::public.user_role, 'contractor')
+    requested_role
   );
   return new;
 end;
@@ -267,7 +287,13 @@ create table checkpoint_evidence (
   storage_path text not null,
   uploaded_by uuid not null references profiles (id),
   uploaded_at timestamptz not null default now(),
-  device_metadata jsonb
+  device_metadata jsonb,
+  -- Set asynchronously, after upload, via record_ai_precheck below - never
+  -- part of the initial insert. 'pending' until the AI call actually
+  -- returns (or fails); the photo itself is already permanent by then
+  -- regardless of what happens with this.
+  ai_precheck_status text not null default 'pending' check (ai_precheck_status in ('pending', 'done', 'failed')),
+  ai_precheck_note text
 );
 
 alter table checkpoint_evidence enable row level security;
@@ -295,8 +321,76 @@ create policy "project members can upload evidence as themselves"
       where cp.id = checkpoint_id
     ))
   );
--- Deliberately no UPDATE or DELETE policy on this table — evidence, once
--- uploaded, is permanent. This is what makes the timestamp trustworthy.
+-- Deliberately no general UPDATE or DELETE policy on this table — the
+-- fields that make evidence trustworthy (storage_path, uploaded_by,
+-- uploaded_at) can never be changed by anyone, at any time, through any
+-- path. record_ai_precheck below is the one narrow exception: it can
+-- only ever touch the two ai_precheck_* columns, hardcoded in the
+-- function body itself, not something a caller can redirect.
+
+-- At most 2 photos per checkpoint - enforced here, not just hidden in the
+-- UI once a checkpoint already has two.
+create or replace function enforce_evidence_limit()
+returns trigger as $$
+declare
+  existing_count int;
+begin
+  -- Advisory lock scoped to this one checkpoint, held until the
+  -- transaction ends. Closes a real race: without this, two uploads
+  -- landing within the same instant could each see "only 1 photo exists"
+  -- before either commits, letting 3 through instead of the intended 2.
+  -- Different checkpoints use different lock keys, so this only
+  -- serializes uploads competing for the *same* checkpoint, nothing else.
+  perform pg_advisory_xact_lock(hashtext(new.checkpoint_id::text));
+
+  select count(*) into existing_count
+  from checkpoint_evidence where checkpoint_id = new.checkpoint_id;
+
+  if existing_count >= 2 then
+    raise exception 'This checkpoint already has 2 photos, the limit per checkpoint.';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_evidence_limit_trigger on checkpoint_evidence;
+
+create trigger enforce_evidence_limit_trigger
+  before insert on checkpoint_evidence
+  for each row execute function enforce_evidence_limit();
+
+-- Called by the server after an AI precheck actually completes (or fails)
+-- for a specific photo. Only ever writes ai_precheck_status/ai_precheck_note
+-- - every other column is untouchable through this path, by construction,
+-- not by convention. This is advisory only: it informs the engineer's
+-- judgment, it never blocks or overrides Pass/Fail/Flag, which stays
+-- entirely the designer's call either way.
+create or replace function record_ai_precheck(
+  target_evidence_id uuid,
+  new_status text,
+  note text
+)
+returns void as $$
+declare
+  target_project_id uuid;
+begin
+  select cs.project_id into target_project_id
+  from checkpoint_evidence ce
+  join checkpoints cp on cp.id = ce.checkpoint_id
+  join checklist_stages cs on cs.id = cp.stage_id
+  where ce.id = target_evidence_id;
+
+  if not (is_project_member(target_project_id) or current_user_is_admin()) then
+    raise exception 'Not a member of this project.';
+  end if;
+
+  update checkpoint_evidence
+  set ai_precheck_status = new_status, ai_precheck_note = note
+  where id = target_evidence_id;
+end;
+$$ language plpgsql security definer;
+
+grant execute on function record_ai_precheck(uuid, text, text) to authenticated;
 
 -- ----------------------------------------------------------------------------
 -- 6. SIGN-OFFS  (explicit confirmation, insert-only, never editable)
@@ -373,6 +467,8 @@ begin
   return new;
 end;
 $$ language plpgsql security definer;
+
+drop trigger if exists enforce_designer_eligibility_trigger on project_members;
 
 create trigger enforce_designer_eligibility_trigger
   before insert or update on project_members
@@ -692,6 +788,61 @@ $$ language plpgsql security definer;
 
 grant execute on function add_next_floor(uuid) to authenticated;
 
+-- Only this project's creator can delete it — not the designer, not an
+-- admin, deliberately, per the explicit decision that this authority
+-- stays narrower than everything else in the app. Blocked entirely, with
+-- no override, the moment any stage on the project has been signed off —
+-- that's the line between "clean up something that shouldn't exist" and
+-- "erase a confirmed record," and it's not negotiable once crossed.
+-- checklist_stages, checkpoints, checkpoint_evidence, and project_members
+-- all cascade automatically on the actual delete below; sign_offs
+-- deliberately does not (see its table definition), which is exactly why
+-- this check has to happen first, explicitly, with a clear message,
+-- rather than letting that absence surface as a raw constraint error.
+create or replace function delete_project(target_project_id uuid)
+returns void as $$
+declare
+  is_creator boolean;
+  has_signoffs boolean;
+begin
+  select (created_by = auth.uid()) into is_creator
+  from projects where id = target_project_id;
+
+  if not coalesce(is_creator, false) then
+    raise exception 'Only this project''s creator can delete it.';
+  end if;
+
+  select exists(
+    select 1 from sign_offs so
+    join checklist_stages cs on cs.id = so.stage_id
+    where cs.project_id = target_project_id
+  ) into has_signoffs;
+
+  if has_signoffs then
+    raise exception 'This project has at least one signed-off stage and can no longer be deleted — once work is confirmed, the record is permanent.';
+  end if;
+
+  delete from projects where id = target_project_id;
+end;
+$$ language plpgsql security definer;
+
+grant execute on function delete_project(uuid) to authenticated;
+
+-- ----------------------------------------------------------------------------
+-- Performance indexes.
+-- project_members(project_id, user_id) and checklist_stages(project_id,
+-- stage_key) already have an index each, as a side effect of their unique
+-- constraints above - genuinely nothing more needed there. These three
+-- don't have that side effect, since nothing about them is unique, and
+-- every one of them gets queried constantly (every stage's checkpoints,
+-- every checkpoint's evidence, every sign-off check) - worth adding
+-- explicitly now, before real usage at scale makes the gap felt, rather
+-- than after.
+-- ----------------------------------------------------------------------------
+create index if not exists idx_checkpoints_stage_id on checkpoints (stage_id);
+create index if not exists idx_checkpoint_evidence_checkpoint_id on checkpoint_evidence (checkpoint_id);
+create index if not exists idx_sign_offs_stage_id on sign_offs (stage_id);
+
 -- ----------------------------------------------------------------------------
 -- Stage seeding used to run automatically via an on_project_created trigger,
 -- firing immediately after the projects row was inserted. That worked fine
@@ -868,6 +1019,7 @@ create policy "only the project's nominated designer can sign off"
 -- stage sign-off. Everyone else on the project can still attach photos
 -- freely (checkpoint_evidence, a separate table, untouched by this).
 drop policy if exists "members can update checkpoint status in their projects" on checkpoints;
+drop policy if exists "only the project's designer can update checkpoint status" on checkpoints;
 
 create policy "only the project's designer can update checkpoint status"
   on checkpoints for update

@@ -46,7 +46,7 @@ export default async function StagePage({
   const { data: evidence } = checkpointIds.length
     ? await supabase
         .from("checkpoint_evidence")
-        .select("id, checkpoint_id, storage_path, uploaded_by, uploaded_at, device_metadata")
+        .select("id, checkpoint_id, storage_path, uploaded_by, uploaded_at, device_metadata, ai_precheck_status, ai_precheck_note")
         .in("checkpoint_id", checkpointIds)
         .order("uploaded_at", { ascending: true })
     : { data: [] };
