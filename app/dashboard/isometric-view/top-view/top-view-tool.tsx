@@ -44,10 +44,7 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
     // reason to add it to every page's initial bundle when only this one
     // tool needs it.
     const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url
-    ).toString();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
     let doc;
     try {
@@ -112,10 +109,7 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
     setMessage(null);
 
     const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-      "pdfjs-dist/build/pdf.worker.min.mjs",
-      import.meta.url
-    ).toString();
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
     const doc = await pdfjsLib.getDocument({ data: pdfBytesRef.current }).promise;
     const page = await doc.getPage(1);

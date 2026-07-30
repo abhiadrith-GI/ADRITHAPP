@@ -175,10 +175,7 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
   async function fileToBase64Image(file: File): Promise<{ base64: string; mediaType: string }> {
     if (file.type === "application/pdf") {
       const pdfjsLib = await import("pdfjs-dist");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-        "pdfjs-dist/build/pdf.worker.min.mjs",
-        import.meta.url
-      ).toString();
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
       const bytes = new Uint8Array(await file.arrayBuffer());
       const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
       const page = await doc.getPage(1);
