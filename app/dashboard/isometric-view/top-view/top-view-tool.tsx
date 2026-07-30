@@ -37,69 +37,75 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
     }
 
     setStage("reading");
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    pdfBytesRef.current = bytes;
 
-    // Loaded dynamically - pdfjs-dist is a genuinely large library, no
-    // reason to add it to every page's initial bundle when only this one
-    // tool needs it.
-    const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
-
-    let doc;
     try {
-      doc = await pdfjsLib.getDocument({ data: bytes }).promise;
-    } catch {
-      setStage("rejected");
-      setMessage("This doesn't look like a valid PDF file.");
-      return;
-    }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      pdfBytesRef.current = bytes;
 
-    const page = await doc.getPage(1);
-    const opList = await page.getOperatorList();
-    const { OPS } = pdfjsLib;
+      // Loaded dynamically - pdfjs-dist is a genuinely large library, no
+      // reason to add it to every page's initial bundle when only this one
+      // tool needs it.
+      const pdfjsLib = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-    let vectorPathOps = 0;
-    for (const fn of opList.fnArray) {
-      if (fn === OPS.constructPath || fn === OPS.stroke || fn === OPS.fill || fn === OPS.eoFill) {
-        vectorPathOps++;
+      let doc;
+      try {
+        doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+      } catch {
+        setStage("rejected");
+        setMessage("This doesn't look like a valid PDF file.");
+        return;
       }
-    }
 
-    const textContent = await page.getTextContent();
+      const page = await doc.getPage(1);
+      const opList = await page.getOperatorList();
+      const { OPS } = pdfjsLib;
 
-    // The actual condition, confirmed against real test files: a genuine
-    // CAD-exported PDF carries real vector path operations. A scanned or
-    // flattened PDF is just one embedded raster image wrapped in a PDF
-    // shell - zero vector paths, no real extractable text either.
-    if (vectorPathOps === 0) {
-      setStage("rejected");
-      setMessage(
-        "This doesn't look like a CAD-exported PDF — it appears to be a scan or a flattened image. " +
-          "Please export directly from AutoCAD (File → Export → PDF) and upload that file instead."
-      );
-      return;
-    }
+      let vectorPathOps = 0;
+      for (const fn of opList.fnArray) {
+        if (fn === OPS.constructPath || fn === OPS.stroke || fn === OPS.fill || fn === OPS.eoFill) {
+          vectorPathOps++;
+        }
+      }
 
-    setStage("checking");
+      const textContent = await page.getTextContent();
 
-    const textSummary = textContent.items
-      .map((it) => ("str" in it ? it.str : ""))
-      .filter(Boolean)
-      .join(" ");
+      // The actual condition, confirmed against real test files: a genuine
+      // CAD-exported PDF carries real vector path operations. A scanned or
+      // flattened PDF is just one embedded raster image wrapped in a PDF
+      // shell - zero vector paths, no real extractable text either.
+      if (vectorPathOps === 0) {
+        setStage("rejected");
+        setMessage(
+          "This doesn't look like a CAD-exported PDF — it appears to be a scan or a flattened image. " +
+            "Please export directly from AutoCAD (File → Export → PDF) and upload that file instead."
+        );
+        return;
+      }
 
-    const resp = await fetch("/api/isometric/top-view/check", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ textSummary, vectorPathOps, textItemCount: textContent.items.length }),
-    });
-    const result = await resp.json();
+      setStage("checking");
 
-    if (result.questions?.length) {
-      setClarifyingQuestions(result.questions);
-      setStage("needs_clarification");
-    } else {
-      setStage("ready_to_generate");
+      const textSummary = textContent.items
+        .map((it) => ("str" in it ? it.str : ""))
+        .filter(Boolean)
+        .join(" ");
+
+      const resp = await fetch("/api/isometric/top-view/check", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ textSummary, vectorPathOps, textItemCount: textContent.items.length }),
+      });
+      const result = await resp.json();
+
+      if (result.questions?.length) {
+        setClarifyingQuestions(result.questions);
+        setStage("needs_clarification");
+      } else {
+        setStage("ready_to_generate");
+      }
+    } catch (err) {
+      setStage("error");
+      setMessage(err instanceof Error ? err.message : "Something went wrong reading this file.");
     }
   }
 
@@ -108,80 +114,71 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
     setStage("generating");
     setMessage(null);
 
-    const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+    try {
+      const pdfjsLib = await import("pdfjs-dist");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-    const doc = await pdfjsLib.getDocument({ data: pdfBytesRef.current }).promise;
-    const page = await doc.getPage(1);
+      const doc = await pdfjsLib.getDocument({ data: pdfBytesRef.current }).promise;
+      const page = await doc.getPage(1);
 
-    // High scale for a genuinely crisp result - this direct render is
-    // what makes the output exact: no reconstruction from parsed
-    // primitives, just a faithful rasterization of what's already there.
-    const viewport = page.getViewport({ scale: 3 });
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+      // High scale for a genuinely crisp result - this direct render is
+      // what makes the output exact: no reconstruction from parsed
+      // primitives, just a faithful rasterization of what's already there.
+      const viewport = page.getViewport({ scale: 3 });
+      const canvas = canvasRef.current;
+      if (!canvas) throw new Error("Could not prepare the canvas for rendering.");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not prepare the canvas for rendering.");
 
-    await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+      await page.render({ canvasContext: ctx, viewport, canvas }).promise;
 
-    const blob: Blob = await new Promise((resolve) =>
-      canvas.toBlob((b) => resolve(b as Blob), "image/jpeg", 0.95)
-    );
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.95)
+      );
+      if (!blob) throw new Error("Could not convert the rendered page to an image.");
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("You've been signed out — please log in again.");
 
-    const genId = crypto.randomUUID();
-    const inputPath = `${user.id}/${genId}/input.pdf`;
-    const outputPath = `${user.id}/${genId}/output.jpg`;
+      const genId = crypto.randomUUID();
+      const inputPath = `${user.id}/${genId}/input.pdf`;
+      const outputPath = `${user.id}/${genId}/output.jpg`;
 
-    const { error: inputUploadError } = await supabase.storage
-      .from("isometric-files")
-      .upload(inputPath, pdfBytesRef.current, { contentType: "application/pdf" });
+      const { error: inputUploadError } = await supabase.storage
+        .from("isometric-files")
+        .upload(inputPath, pdfBytesRef.current, { contentType: "application/pdf" });
+      if (inputUploadError) throw new Error(inputUploadError.message);
 
-    if (inputUploadError) {
+      const { error: outputUploadError } = await supabase.storage
+        .from("isometric-files")
+        .upload(outputPath, blob, { contentType: "image/jpeg" });
+      if (outputUploadError) throw new Error(outputUploadError.message);
+
+      const { error: insertError } = await supabase.from("isometric_generations").insert({
+        id: genId,
+        user_id: user.id,
+        base: "top_view",
+        input_storage_path: inputPath,
+        output_storage_path: outputPath,
+        status: "done",
+      });
+      if (insertError) throw new Error(insertError.message);
+
+      const { data: signedUrlData } = await supabase.storage
+        .from("isometric-files")
+        .createSignedUrl(outputPath, 3600);
+
+      setOutputUrl(signedUrlData?.signedUrl ?? null);
+      setRemaining((r) => Math.max(0, r - 1));
+      setStage("done");
+    } catch (err) {
       setStage("error");
-      setMessage(inputUploadError.message);
-      return;
+      setMessage(err instanceof Error ? err.message : "Something went wrong while generating the output.");
     }
-
-    const { error: outputUploadError } = await supabase.storage
-      .from("isometric-files")
-      .upload(outputPath, blob, { contentType: "image/jpeg" });
-
-    if (outputUploadError) {
-      setStage("error");
-      setMessage(outputUploadError.message);
-      return;
-    }
-
-    const { error: insertError } = await supabase.from("isometric_generations").insert({
-      id: genId,
-      user_id: user.id,
-      base: "top_view",
-      input_storage_path: inputPath,
-      output_storage_path: outputPath,
-      status: "done",
-    });
-
-    if (insertError) {
-      setStage("error");
-      setMessage(insertError.message);
-      return;
-    }
-
-    const { data: signedUrlData } = await supabase.storage
-      .from("isometric-files")
-      .createSignedUrl(outputPath, 3600);
-
-    setOutputUrl(signedUrlData?.signedUrl ?? null);
-    setRemaining((r) => Math.max(0, r - 1));
-    setStage("done");
   }
 
   return (

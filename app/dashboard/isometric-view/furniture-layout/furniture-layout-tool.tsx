@@ -217,95 +217,106 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
     }
 
     setStage("studying");
-    const resp = await fetch("/api/isometric/furniture-layout/study", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(imageDataRef.current),
-    });
-    const result = await resp.json();
+    try {
+      const resp = await fetch("/api/isometric/furniture-layout/study", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(imageDataRef.current),
+      });
+      const result = await resp.json();
 
-    if (!resp.ok || result.error) {
+      if (!resp.ok || result.error) {
+        setStage("error");
+        setMessage(result.error ?? "Something went wrong studying this image.");
+        return;
+      }
+
+      setRoomTypeGuess(result.room_type_guess);
+      if (result.questions?.length) {
+        setQuestions(result.questions);
+        setAnswers(new Array(result.questions.length).fill(""));
+        setStage("answering");
+      } else {
+        await runGenerate(result.room_type_guess, []);
+      }
+    } catch (err) {
       setStage("error");
-      setMessage(result.error ?? "Something went wrong studying this image.");
-      return;
-    }
-
-    setRoomTypeGuess(result.room_type_guess);
-    if (result.questions?.length) {
-      setQuestions(result.questions);
-      setAnswers(new Array(result.questions.length).fill(""));
-      setStage("answering");
-    } else {
-      await runGenerate(result.room_type_guess, []);
+      setMessage(err instanceof Error ? err.message : "Something went wrong studying this image.");
     }
   }
 
   async function runGenerate(roomType: string, qas: QA[]) {
     setStage("generating");
-    const resp = await fetch("/api/isometric/furniture-layout/generate", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...imageDataRef.current, roomTypeGuess: roomType, questionsAndAnswers: qas }),
-    });
-    const result = await resp.json();
+    setMessage(null);
+    try {
+      const resp = await fetch("/api/isometric/furniture-layout/generate", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...imageDataRef.current, roomTypeGuess: roomType, questionsAndAnswers: qas }),
+      });
+      const result = await resp.json();
 
-    if (!resp.ok || result.error) {
+      if (!resp.ok || result.error) {
+        setStage("error");
+        setMessage(result.error ?? "Something went wrong generating this layout.");
+        return;
+      }
+
+      setLayout(result.layout);
+      setStage("ready");
+    } catch (err) {
       setStage("error");
-      setMessage(result.error ?? "Something went wrong generating this layout.");
-      return;
+      setMessage(err instanceof Error ? err.message : "Something went wrong generating this layout.");
     }
-
-    setLayout(result.layout);
-    setStage("ready");
   }
 
   async function handleGenerate() {
     if (!layout || !canvasRef.current) return;
     setStage("rendering");
-    drawSketchupLayout(canvasRef.current, layout);
+    setMessage(null);
 
-    const blob: Blob = await new Promise((resolve) =>
-      canvasRef.current!.toBlob((b) => resolve(b as Blob), "image/jpeg", 0.95)
-    );
+    try {
+      drawSketchupLayout(canvasRef.current, layout);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return;
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvasRef.current!.toBlob((b) => resolve(b), "image/jpeg", 0.95)
+      );
+      if (!blob) throw new Error("Could not convert the rendered layout to an image.");
 
-    const genId = crypto.randomUUID();
-    const outputPath = `${user.id}/${genId}/output.jpg`;
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("You've been signed out — please log in again.");
 
-    const { error: uploadError } = await supabase.storage
-      .from("isometric-files")
-      .upload(outputPath, blob, { contentType: "image/jpeg" });
-    if (uploadError) {
+      const genId = crypto.randomUUID();
+      const outputPath = `${user.id}/${genId}/output.jpg`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("isometric-files")
+        .upload(outputPath, blob, { contentType: "image/jpeg" });
+      if (uploadError) throw new Error(uploadError.message);
+
+      const { error: insertError } = await supabase.from("isometric_generations").insert({
+        id: genId,
+        user_id: user.id,
+        base: "furniture_layout",
+        input_storage_path: outputPath,
+        output_storage_path: outputPath,
+        status: "done",
+      });
+      if (insertError) throw new Error(insertError.message);
+
+      const { data: signedUrlData } = await supabase.storage
+        .from("isometric-files")
+        .createSignedUrl(outputPath, 3600);
+
+      setOutputUrl(signedUrlData?.signedUrl ?? null);
+      setRemaining((r) => Math.max(0, r - 1));
+      setStage("done");
+    } catch (err) {
       setStage("error");
-      setMessage(uploadError.message);
-      return;
+      setMessage(err instanceof Error ? err.message : "Something went wrong while generating the output.");
     }
-
-    const { error: insertError } = await supabase.from("isometric_generations").insert({
-      id: genId,
-      user_id: user.id,
-      base: "furniture_layout",
-      input_storage_path: outputPath,
-      output_storage_path: outputPath,
-      status: "done",
-    });
-    if (insertError) {
-      setStage("error");
-      setMessage(insertError.message);
-      return;
-    }
-
-    const { data: signedUrlData } = await supabase.storage
-      .from("isometric-files")
-      .createSignedUrl(outputPath, 3600);
-
-    setOutputUrl(signedUrlData?.signedUrl ?? null);
-    setRemaining((r) => Math.max(0, r - 1));
-    setStage("done");
   }
 
   return (
