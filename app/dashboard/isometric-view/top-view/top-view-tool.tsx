@@ -17,7 +17,7 @@ type Stage =
 export function TopViewTool({ remainingToday }: { remainingToday: number }) {
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pdfBytesRef = useRef<Uint8Array | null>(null);
+  const pdfFileRef = useRef<File | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [stage, setStage] = useState<Stage>("idle");
@@ -40,7 +40,7 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
 
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      pdfBytesRef.current = bytes;
+      pdfFileRef.current = file;
 
       // Loaded dynamically - pdfjs-dist is a genuinely large library, no
       // reason to add it to every page's initial bundle when only this one
@@ -110,7 +110,7 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
   }
 
   async function handleGenerate() {
-    if (!pdfBytesRef.current) return;
+    if (!pdfFileRef.current) return;
     setStage("generating");
     setMessage(null);
 
@@ -118,7 +118,12 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
       const pdfjsLib = await import("pdfjs-dist");
       pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
 
-      const doc = await pdfjsLib.getDocument({ data: pdfBytesRef.current }).promise;
+      // A fresh, never-before-transferred copy for this specific call -
+      // reusing the same buffer across two getDocument() calls is exactly
+      // what caused the "ArrayBuffer is detached" failure. Each worker
+      // hand-off gets its own copy from here on.
+      const renderBytes = new Uint8Array(await pdfFileRef.current.arrayBuffer());
+      const doc = await pdfjsLib.getDocument({ data: renderBytes }).promise;
       const page = await doc.getPage(1);
 
       // High scale for a genuinely crisp result - this direct render is
@@ -148,9 +153,12 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
       const inputPath = `${user.id}/${genId}/input.pdf`;
       const outputPath = `${user.id}/${genId}/output.jpg`;
 
+      // Another fresh copy, specifically for the upload - the one above
+      // was already handed to the PDF worker and can't be reused either.
+      const uploadBytes = new Uint8Array(await pdfFileRef.current.arrayBuffer());
       const { error: inputUploadError } = await supabase.storage
         .from("isometric-files")
-        .upload(inputPath, pdfBytesRef.current, { contentType: "application/pdf" });
+        .upload(inputPath, uploadBytes, { contentType: "application/pdf" });
       if (inputUploadError) throw new Error(inputUploadError.message);
 
       const { error: outputUploadError } = await supabase.storage
