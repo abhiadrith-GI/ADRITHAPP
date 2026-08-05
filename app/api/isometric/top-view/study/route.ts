@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
  * is the first, necessary step, not an afterthought.
  */
 export async function POST(req: NextRequest) {
-  const { imageBase64, mediaType } = await req.json();
+  const { base64, mediaType } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: imageBase64 } },
+              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
               {
                 type: "text",
                 text:

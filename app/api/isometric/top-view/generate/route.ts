@@ -15,7 +15,7 @@ import { createClient } from "@/lib/supabase/server";
  * itself. That trimming happens deterministically in the renderer.
  */
 export async function POST(req: NextRequest) {
-  const { imageBase64, mediaType, floorLabel, questionsAndAnswers, generationId } = await req.json();
+  const { base64, mediaType, floorLabel, questionsAndAnswers, generationId } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data: imageBase64 } },
+              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
               {
                 type: "text",
                 text:
