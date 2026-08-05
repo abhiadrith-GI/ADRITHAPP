@@ -19,7 +19,7 @@ import { createClient } from "@/lib/supabase/server";
  * rule for every possible room.
  */
 export async function POST(req: NextRequest) {
-  const { imageBase64, mediaType, roomTypeGuess, questionsAndAnswers } = await req.json();
+  const { imageBase64, mediaType, roomTypeGuess, questionsAndAnswers, generationId } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -27,6 +27,24 @@ export async function POST(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  // SECURITY: require the reservation made by the study step, rather
+  // than independently re-checking the count - the slot was already
+  // reserved there, and this also closes a direct bypass of calling this
+  // route without ever having called /study first.
+  if (!generationId) {
+    return NextResponse.json({ error: "Missing generation reservation." }, { status: 400 });
+  }
+  const { data: reservation } = await supabase
+    .from("isometric_generations")
+    .select("id, status")
+    .eq("id", generationId)
+    .eq("user_id", user.id)
+    .eq("base", "furniture_layout")
+    .single();
+  if (!reservation || reservation.status !== "pending") {
+    return NextResponse.json({ error: "This reservation is invalid or already used." }, { status: 403 });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;

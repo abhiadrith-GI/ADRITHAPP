@@ -23,9 +23,10 @@ export default async function TopViewPage() {
         <Link href="/dashboard/isometric-view" className="text-xs text-[var(--adrith-dim-2)]">
           ← Isometric View
         </Link>
-        <h1 className="mt-3 text-xl font-semibold">Actual Top View</h1>
+        <h1 className="mt-3 text-xl font-semibold">Top View</h1>
         <p className="mt-1 text-sm text-[var(--adrith-dim-2)]">
-          CAD-exported vector PDFs only — an exact, unaltered reproduction, nothing else.
+          CAD-exported vector PDFs only — pick a floor, and it&apos;s turned into a clear 3D view,
+          easy for anyone to understand at a glance.
         </p>
 
         <TopViewTool remainingToday={remaining ?? 5} />

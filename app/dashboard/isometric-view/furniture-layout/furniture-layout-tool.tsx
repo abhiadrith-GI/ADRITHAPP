@@ -162,6 +162,7 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageDataRef = useRef<{ base64: string; mediaType: string } | null>(null);
+  const generationIdRef = useRef<string | null>(null);
 
   const [stage, setStage] = useState<Stage>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -232,6 +233,7 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
       }
 
       setRoomTypeGuess(result.room_type_guess);
+      generationIdRef.current = result.generationId ?? null;
       if (result.questions?.length) {
         setQuestions(result.questions);
         setAnswers(new Array(result.questions.length).fill(""));
@@ -252,7 +254,12 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
       const resp = await fetch("/api/isometric/furniture-layout/generate", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...imageDataRef.current, roomTypeGuess: roomType, questionsAndAnswers: qas }),
+        body: JSON.stringify({
+          ...imageDataRef.current,
+          roomTypeGuess: roomType,
+          questionsAndAnswers: qas,
+          generationId: generationIdRef.current,
+        }),
       });
       const result = await resp.json();
 
@@ -288,7 +295,8 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
       } = await supabase.auth.getUser();
       if (!user) throw new Error("You've been signed out — please log in again.");
 
-      const genId = crypto.randomUUID();
+      const genId = generationIdRef.current;
+      if (!genId) throw new Error("Missing generation reservation — please start over.");
       const outputPath = `${user.id}/${genId}/output.jpg`;
 
       const { error: uploadError } = await supabase.storage
@@ -296,15 +304,12 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
         .upload(outputPath, blob, { contentType: "image/jpeg" });
       if (uploadError) throw new Error(uploadError.message);
 
-      const { error: insertError } = await supabase.from("isometric_generations").insert({
-        id: genId,
-        user_id: user.id,
-        base: "furniture_layout",
-        input_storage_path: outputPath,
-        output_storage_path: outputPath,
-        status: "done",
-      });
-      if (insertError) throw new Error(insertError.message);
+      const { error: updateError } = await supabase
+        .from("isometric_generations")
+        .update({ input_storage_path: outputPath, output_storage_path: outputPath, status: "done" })
+        .eq("id", genId)
+        .eq("user_id", user.id);
+      if (updateError) throw new Error(updateError.message);
 
       const { data: signedUrlData } = await supabase.storage
         .from("isometric-files")

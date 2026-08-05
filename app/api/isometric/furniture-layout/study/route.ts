@@ -22,6 +22,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  // SECURITY: check the real daily limit before spending money on an AI
+  // call - this route can otherwise be hit directly, unlimited times.
+  const { data: remaining } = await supabase.rpc("isometric_generations_remaining_today", {
+    target_user_id: user.id,
+    target_base: "furniture_layout",
+  });
+  if ((remaining ?? 0) <= 0) {
+    return NextResponse.json(
+      { error: "You've used all 5 Furniture Layout generations for today — this resets tomorrow." },
+      { status: 429 }
+    );
+  }
+
+  // SECURITY: reserve the slot NOW, before the AI call - a saved-count
+  // check alone doesn't stop repeated calls that never reach the final
+  // save step, since no row would exist yet to count against the limit.
+  const { data: reservation, error: reserveError } = await supabase
+    .from("isometric_generations")
+    .insert({ user_id: user.id, base: "furniture_layout", input_storage_path: "pending", status: "pending" })
+    .select("id")
+    .single();
+  if (reserveError || !reservation) {
+    return NextResponse.json(
+      { error: "You've used all 5 Furniture Layout generations for today — this resets tomorrow." },
+      { status: 429 }
+    );
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "AI analysis is not configured yet." }, { status: 503 });
@@ -75,13 +103,14 @@ export async function POST(req: NextRequest) {
       aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ room_type_guess: "Room", questions: [] });
+      return NextResponse.json({ room_type_guess: "Room", questions: [], generationId: reservation.id });
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
     return NextResponse.json({
       room_type_guess: parsed.room_type_guess ?? "Room",
       questions: Array.isArray(parsed.questions) ? parsed.questions.slice(0, 3) : [],
+      generationId: reservation.id,
     });
   } catch {
     return NextResponse.json({ room_type_guess: "Room", questions: [] });

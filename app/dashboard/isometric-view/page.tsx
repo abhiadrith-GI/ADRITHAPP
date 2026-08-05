@@ -27,9 +27,9 @@ export default async function IsometricViewHubPage() {
             href="/dashboard/isometric-view/top-view"
             className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4"
           >
-            <p className="text-sm font-semibold">Actual Top View</p>
+            <p className="text-sm font-semibold">Top View</p>
             <p className="mt-1 text-xs text-[var(--adrith-dim-2)]">
-              Exact reproduction from a CAD-exported PDF — nothing altered. 5 per day.
+              Pick a floor from a CAD-exported PDF, get a clear 3D view of it. 5 per day.
             </p>
           </Link>
 
