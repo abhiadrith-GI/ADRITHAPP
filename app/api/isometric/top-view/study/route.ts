@@ -95,7 +95,15 @@ export async function POST(req: NextRequest) {
     });
 
     if (!aiResp.ok) {
-      return NextResponse.json({ error: "The AI analysis request failed." }, { status: 502 });
+      let detail = "";
+      try {
+        const errBody = await aiResp.json();
+        detail = errBody?.error?.message ?? "";
+      } catch {}
+      return NextResponse.json(
+        { error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` },
+        { status: 502 }
+      );
     }
 
     const aiData = await aiResp.json();
