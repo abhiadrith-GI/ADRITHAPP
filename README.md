@@ -550,3 +550,14 @@ The output rendering was rebuilt for a proper SketchUp-style look:
 directional face shading (top/front/side of each piece at different
 lightness, not flat single-tone boxes), a soft ground shadow under the
 model, and real height estimates per piece rather than uniform blocks.
+
+### Note — Anthropic API key rotated
+
+The original `ANTHROPIC_API_KEY` in Netlify was returning a genuine
+`401 invalid x-api-key` from Anthropic itself - confirmed directly once
+the error-surfacing fix (previous commit) actually showed the real
+reason instead of a generic message. Replaced with a fresh key, set to
+never expire since it lives only in Netlify's environment variables,
+never in code or the repo. This commit exists specifically to trigger a
+fresh build, since Netlify only picks up environment variable changes
+on the next deploy, not automatically.
