@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { drawFurniturePiece } from "@/lib/furniture-shapes";
 
 type FurnitureItem = {
   type: string;
@@ -45,13 +46,6 @@ function proj(x: number, y: number, z: number) {
   const ix = (x - y) * Math.cos((30 * Math.PI) / 180) * SCALE;
   const iy = ((x + y) * Math.sin((30 * Math.PI) / 180) - z) * SCALE;
   return { x: OFFSET_X + ix, y: OFFSET_Y + iy };
-}
-
-function shade(hex: string, factor: number) {
-  const r = Math.min(255, Math.round(parseInt(hex.slice(1, 3), 16) * factor));
-  const g = Math.min(255, Math.round(parseInt(hex.slice(3, 5), 16) * factor));
-  const b = Math.min(255, Math.round(parseInt(hex.slice(5, 7), 16) * factor));
-  return `rgb(${r},${g},${b})`;
 }
 
 const PALETTE = ["#d97757", "#8a6a52", "#c98a52", "#6a8a7a", "#7a7ab0", "#b08a4a"];
@@ -140,15 +134,19 @@ function drawSketchupLayout(canvas: HTMLCanvasElement, layout: Layout) {
     .sort((a, b) => b.rx + b.ry - (a.rx + a.ry));
 
   for (const it of items) {
-    const x0 = it.rx, y0 = it.ry, x1 = it.rx + it.rw, y1 = it.ry + it.rd, h = it.rh;
-    const top = [proj(x0, y0, h), proj(x1, y0, h), proj(x1, y1, h), proj(x0, y1, h)];
-    const front = [proj(x0, y1, 0), proj(x1, y1, 0), proj(x1, y1, h), proj(x0, y1, h)];
-    const right = [proj(x1, y0, 0), proj(x1, y1, 0), proj(x1, y1, h), proj(x1, y0, h)];
-    poly(front, shade(it.color, 0.62));
-    poly(right, shade(it.color, 0.8));
-    poly(top, shade(it.color, 1.08));
+    // Real composite shapes now (a bed with headboard/pillow/throw, a
+    // wardrobe with door panels, a proper dining set, a kitchen counter
+    // with a sink) instead of one flat labeled box - matching the actual
+    // detail level in the firm's own real reference work.
+    drawFurniturePiece(
+      ctx,
+      proj,
+      { type: it.type, x: it.rx, y: it.ry, w: it.rw, d: it.rd },
+      it.color,
+      it.rh
+    );
 
-    const centerTop = proj(x0 + it.rw / 2, y0 + it.rd / 2, h);
+    const centerTop = proj(it.rx + it.rw / 2, it.ry + it.rd / 2, it.rh);
     ctx.fillStyle = "#242424";
     ctx.font = "bold 13px sans-serif";
     ctx.textAlign = "center";
@@ -413,13 +411,23 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
             alt="Suggested furniture layout"
             className="w-full rounded-lg border border-white/20 bg-white"
           />
-          <a
-            href={outputUrl}
-            download="furniture-layout.jpg"
-            className="mt-2 block text-center text-xs text-[var(--adrith-rust)]"
+          <button
+            onClick={async () => {
+              const resp = await fetch(outputUrl);
+              const blob = await resp.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = "furniture-layout.jpg";
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+            }}
+            className="mt-2 block w-full text-center text-xs text-[var(--adrith-rust)]"
           >
             Download
-          </a>
+          </button>
         </div>
       )}
 

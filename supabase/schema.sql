@@ -462,6 +462,17 @@ create policy "users can complete their own pending generation"
   using (user_id = auth.uid() and status = 'pending')
   with check (user_id = auth.uid());
 
+-- Lets a reservation be released when the AI call itself genuinely
+-- fails (a bad key, a bug, any system-side failure) - that isn't a real
+-- use of the tool and shouldn't cost the person one of their 5 today.
+-- Same restriction as completing one: only your own, only while still
+-- pending - once a generation is actually done, it can't be deleted.
+drop policy if exists "users can release their own pending generation" on isometric_generations;
+create policy "users can release their own pending generation"
+  on isometric_generations for delete
+  to authenticated
+  using (user_id = auth.uid() and status = 'pending');
+
 -- Rejected (not-a-genuine-vector-PDF) attempts don't count against the
 -- daily limit - only real, processed generations do. A person mistakenly
 -- uploading a scan shouldn't lose one of their 5 for that alone. Takes

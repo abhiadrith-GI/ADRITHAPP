@@ -76,9 +76,23 @@ export async function POST(req: NextRequest) {
                   `This floor plan sheet may show multiple floors. Focus ONLY on: ${floorLabel}. ` +
                   `Ignore any other floors shown on the same sheet.\n\n` +
                   (qaText ? `Additional context from the person:\n${qaText}\n\n` : "") +
-                  `Read the plan's own dimension labels if present - real architectural plans ` +
-                  `usually give room sizes or an overall footprint. Use those real numbers. Only ` +
-                  `estimate reasonable real-world feet if genuinely nothing is labeled.\n\n` +
+                  `Work out this floor's real layout systematically, the way a real drafter would - ` +
+                  `do this BEFORE writing any wall coordinates:\n` +
+                  `1. Read every room's own labeled width x depth on the sheet. These are real ` +
+                  `numbers - use them exactly, don't round or approximate them.\n` +
+                  `2. Work out which rooms are actually adjacent to which, and on which side (left/` +
+                  `right/above/below), from their real position on the sheet - not an assumed grid.\n` +
+                  `3. Build one consistent set of coordinates room by room: place the first room, ` +
+                  `then place each neighbor using ITS OWN labeled dimension, positioned to share a ` +
+                  `wall with the room(s) it's actually next to. A small gap between labeled room ` +
+                  `dimensions and the overall building footprint is normal and expected - that's wall ` +
+                  `thickness, typically 4-6 inches for interior partitions and 8-10 inches for ` +
+                  `exterior walls, not a mistake to paper over.\n` +
+                  `4. Check your own work before finalizing: do the rooms along each side, added up, ` +
+                  `land close to the plan's own overall width and depth? If they don't, you've ` +
+                  `likely misread an adjacency or a dimension - look again before writing coordinates.\n` +
+                  `Only estimate reasonable proportions where a dimension is genuinely not labeled ` +
+                  `anywhere on the sheet.\n\n` +
                   `Describe every wall as a straight centerline segment in real feet - both the ` +
                   `outer perimeter walls and every interior partition between rooms. For each ` +
                   `segment, give its two endpoints (x,y in feet, with (0,0) at one corner of this ` +
@@ -113,6 +127,7 @@ export async function POST(req: NextRequest) {
         const errBody = await aiResp.json();
         detail = errBody?.error?.message ?? "";
       } catch {}
+      await supabase.from("isometric_generations").delete().eq("id", reservation.id);
       return NextResponse.json(
         { error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` },
         { status: 502 }
@@ -124,12 +139,17 @@ export async function POST(req: NextRequest) {
       aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      await supabase.from("isometric_generations").delete().eq("id", reservation.id);
       return NextResponse.json({ error: "Could not read a floor layout from this plan." }, { status: 502 });
     }
 
     const floorPlan = JSON.parse(jsonMatch[0]);
     return NextResponse.json({ floorPlan, generationId: reservation.id });
-  } catch {
-    return NextResponse.json({ error: "Something went wrong analyzing this plan." }, { status: 500 });
+  } catch (err) {
+    await supabase.from("isometric_generations").delete().eq("id", reservation.id);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Something went wrong analyzing this plan." },
+      { status: 500 }
+    );
   }
 }

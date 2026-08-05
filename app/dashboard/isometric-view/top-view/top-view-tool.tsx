@@ -446,13 +446,28 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
             alt="Generated 3D floor view"
             className="w-full rounded-lg border border-white/20 bg-white"
           />
-          <a
-            href={outputUrl}
-            download="floor-view.jpg"
-            className="mt-2 block text-center text-xs text-[var(--adrith-rust)]"
+          <button
+            onClick={async () => {
+              // A plain <a download> unreliably ignores the download
+              // attribute for cross-origin URLs like Supabase Storage -
+              // most browsers just open the image instead of saving it.
+              // Fetching it into a local blob URL makes the save work
+              // reliably regardless of origin.
+              const resp = await fetch(outputUrl);
+              const blob = await resp.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = "floor-view.jpg";
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+            }}
+            className="mt-2 block w-full text-center text-xs text-[var(--adrith-rust)]"
           >
             Download
-          </a>
+          </button>
         </div>
       )}
 

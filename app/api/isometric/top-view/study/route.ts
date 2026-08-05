@@ -100,6 +100,9 @@ export async function POST(req: NextRequest) {
         const errBody = await aiResp.json();
         detail = errBody?.error?.message ?? "";
       } catch {}
+      // Release the slot - a genuine system-side failure isn't a real
+      // use of the tool and shouldn't cost the person one of their 5.
+      await supabase.from("isometric_generations").delete().eq("id", reservation.id);
       return NextResponse.json(
         { error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` },
         { status: 502 }
@@ -120,7 +123,11 @@ export async function POST(req: NextRequest) {
       questions: Array.isArray(parsed.questions) ? parsed.questions.slice(0, 2) : [],
       generationId: reservation.id,
     });
-  } catch {
-    return NextResponse.json({ floors_detected: [], questions: [] });
+  } catch (err) {
+    await supabase.from("isometric_generations").delete().eq("id", reservation.id);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Something went wrong studying this plan." },
+      { status: 500 }
+    );
   }
 }

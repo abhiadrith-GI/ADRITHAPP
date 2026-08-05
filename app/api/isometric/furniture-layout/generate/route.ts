@@ -96,8 +96,10 @@ export async function POST(req: NextRequest) {
                   `Respond with ONLY valid JSON, no other text, in exactly this shape:\n` +
                   `{"room_label":"e.g. Kitchen","doors":[{"wall":"top|bottom|left|right",` +
                   `"position_pct":0-100,"width_pct":5-30}],"windows":[{"wall":"...",` +
-                  `"position_pct":0-100,"width_pct":5-30}],"furniture":[{"type":"free-form, e.g. ` +
-                  `kitchen_island, dining_table, sofa, bed, wardrobe, bookshelf, desk, chair",` +
+                  `"position_pct":0-100,"width_pct":5-30}],"furniture":[{"type":"use one of: bed, ` +
+                  `wardrobe, study_table (a desk with a chair), dining_table (a table with chairs all ` +
+                  `around), kitchen_counter (a counter run with a sink and cabinets), sofa, chair - or ` +
+                  `any other free-form type if none of these genuinely fit",` +
                   `"label":"short label","x_pct":0-100,"y_pct":0-100,"width_pct":5-40,` +
                   `"depth_pct":5-40,"height_ft":approx real height in feet,"rotation_deg":0|90|180|270}],` +
                   `"notes":"one or two sentences on the arrangement logic and which clearances it respects"}`,
@@ -114,6 +116,7 @@ export async function POST(req: NextRequest) {
         const errBody = await aiResp.json();
         detail = errBody?.error?.message ?? "";
       } catch {}
+      await supabase.from("isometric_generations").delete().eq("id", reservation.id);
       return NextResponse.json(
         { error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` },
         { status: 502 }
@@ -125,12 +128,17 @@ export async function POST(req: NextRequest) {
       aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
+      await supabase.from("isometric_generations").delete().eq("id", reservation.id);
       return NextResponse.json({ error: "Could not read a layout from this image." }, { status: 502 });
     }
 
     const layout = JSON.parse(jsonMatch[0]);
     return NextResponse.json({ layout });
-  } catch {
-    return NextResponse.json({ error: "Something went wrong analyzing this image." }, { status: 500 });
+  } catch (err) {
+    await supabase.from("isometric_generations").delete().eq("id", reservation.id);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Something went wrong analyzing this image." },
+      { status: 500 }
+    );
   }
 }
