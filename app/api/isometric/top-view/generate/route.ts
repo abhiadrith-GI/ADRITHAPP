@@ -76,21 +76,31 @@ export async function POST(req: NextRequest) {
                   `This floor plan sheet may show multiple floors. Focus ONLY on: ${floorLabel}. ` +
                   `Ignore any other floors shown on the same sheet.\n\n` +
                   (qaText ? `Additional context from the person:\n${qaText}\n\n` : "") +
-                  `Work out this floor's real layout systematically, the way a real drafter would - ` +
-                  `do this BEFORE writing any wall coordinates:\n` +
-                  `1. Read every room's own labeled width x depth on the sheet. These are real ` +
+                  `Work out this floor's real layout in two clearly separate steps - this is how ` +
+                  `real floor-plan reconstruction is actually done, not a shortcut:\n\n` +
+                  `STEP 1 - build the adjacency graph first, before any coordinates exist:\n` +
+                  `- Read every room's own labeled width x depth on the sheet. These are real ` +
                   `numbers - use them exactly, don't round or approximate them.\n` +
-                  `2. Work out which rooms are actually adjacent to which, and on which side (left/` +
-                  `right/above/below), from their real position on the sheet - not an assumed grid.\n` +
-                  `3. Build one consistent set of coordinates room by room: place the first room, ` +
-                  `then place each neighbor using ITS OWN labeled dimension, positioned to share a ` +
-                  `wall with the room(s) it's actually next to. A small gap between labeled room ` +
-                  `dimensions and the overall building footprint is normal and expected - that's wall ` +
-                  `thickness, typically 4-6 inches for interior partitions and 8-10 inches for ` +
-                  `exterior walls, not a mistake to paper over.\n` +
-                  `4. Check your own work before finalizing: do the rooms along each side, added up, ` +
-                  `land close to the plan's own overall width and depth? If they don't, you've ` +
-                  `likely misread an adjacency or a dimension - look again before writing coordinates.\n` +
+                  `- For every room, explicitly list which OTHER rooms it actually touches on the ` +
+                  `sheet, and on which specific side (north/south/east/west). Write this out room by ` +
+                  `room before doing anything else - e.g. "Kitchen: touches Hall on its south side. ` +
+                  `Hall: touches Kitchen (north), touches Bedroom2 (east)." Get this topology right ` +
+                  `first; coordinates come only after.\n\n` +
+                  `STEP 2 - place rooms in order, each one anchored to a neighbor already placed:\n` +
+                  `- Place one room first, anywhere. Then place each further room ONLY relative to a ` +
+                  `neighbor from your STEP 1 list that's already placed - never compute a room's ` +
+                  `position independently of its stated neighbors.\n` +
+                  `- The critical rule: if two rooms share a wall on your adjacency list, they MUST ` +
+                  `use the exact same coordinate range along that shared wall - e.g. if Bedroom, ` +
+                  `Toilet, and Bedroom2 all stack in one column sharing the same wall line, they all ` +
+                  `share the same x-range (or y-range), not just "roughly near" each other. This is ` +
+                  `the single most common real error - a room ending up under the wrong column - so ` +
+                  `check every shared-wall pair explicitly before finalizing.\n` +
+                  `- A small gap between labeled room dimensions and the overall building footprint ` +
+                  `is normal and expected - that's wall thickness, typically 4-6 inches for interior ` +
+                  `partitions and 8-10 inches for exterior walls, not a mistake to paper over.\n` +
+                  `- Last check: do the rooms along each side, added up, land close to the plan's own ` +
+                  `overall width and depth? If not, revisit STEP 1 - an adjacency was likely misread.\n\n` +
                   `Only estimate reasonable proportions where a dimension is genuinely not labeled ` +
                   `anywhere on the sheet.\n\n` +
                   `Describe every wall as a straight centerline segment in real feet - both the ` +

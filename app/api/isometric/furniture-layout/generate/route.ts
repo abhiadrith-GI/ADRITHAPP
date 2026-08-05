@@ -77,18 +77,32 @@ export async function POST(req: NextRequest) {
                 text:
                   `This room was identified as: ${roomTypeGuess ?? "a room in a house"}. ` +
                   (qaText ? `Additional context from the person:\n${qaText}\n\n` : "") +
-                  `Identify the room's actual shape, doors, and windows, then suggest ONE workable ` +
-                  `furniture arrangement suited to what this room actually is - a bedroom needs a ` +
-                  `bed and wardrobe; a kitchen needs work surfaces and an efficient work triangle; a ` +
-                  `dining room needs a table with pull-out space for every chair; a living room needs ` +
-                  `seating oriented for conversation or a screen; a study needs a desk with room to ` +
-                  `sit and move a chair. Choose furniture and arrangement genuinely appropriate to ` +
-                  `the actual room, not a generic template.\n\n` +
-                  `These clearances are REQUIRED, not optional, regardless of room type:\n` +
-                  `- Main walkway through the room: at least 36 inches wide\n` +
-                  `- Both sides of every doorway: at least 36 inches kept clear, matching the door's own swing\n` +
-                  `- Between major furniture pieces, and furniture to wall, where not a walkway: at least 18-24 inches\n` +
-                  `Beyond these, apply real room-specific judgment - e.g. a kitchen's work triangle, ` +
+                  `Identify the room's actual shape, doors, and windows first.\n\n` +
+                  `Then plan the furniture arrangement in two clearly separate steps - this is how ` +
+                  `real automated furniture-layout systems actually do it, not a shortcut:\n\n` +
+                  `STEP 1 - decide relationships before any coordinates exist:\n` +
+                  `- Choose furniture genuinely appropriate to what this room actually is - a bedroom ` +
+                  `needs a bed and wardrobe; a kitchen needs work surfaces and an efficient work ` +
+                  `triangle; a dining room needs a table with pull-out space for every chair; a ` +
+                  `living room needs seating oriented for conversation or a screen; a study needs a ` +
+                  `desk with room to sit and move a chair. Not a generic template.\n` +
+                  `- For each piece, state in words what it's placed relative to BEFORE assigning any ` +
+                  `numbers - e.g. "bed: centered against the wall opposite the door" , "wardrobe: ` +
+                  `against the wall to the right of the bed, clear of the door swing", "study table: ` +
+                  `near the window, chair pulled out facing it." Every piece should be anchored to ` +
+                  `the room's actual walls/doors/windows or to another piece - never placed in ` +
+                  `isolation with no stated reason for that position.\n\n` +
+                  `STEP 2 - convert to coordinates in the SAME order you just reasoned through:\n` +
+                  `- Place the largest anchor piece (bed, sofa, dining table) first. Then place each ` +
+                  `further piece using the position of what's already placed, matching your step 1 ` +
+                  `relationships exactly - if you said "wardrobe: right of the bed," its coordinates ` +
+                  `must actually put it to the right of the bed's actual coordinates, not somewhere ` +
+                  `unrelated that happens to fit.\n` +
+                  `- These clearances are REQUIRED, not optional, regardless of room type:\n` +
+                  `  - Main walkway through the room: at least 36 inches wide\n` +
+                  `  - Both sides of every doorway: at least 36 inches kept clear, matching the door's own swing\n` +
+                  `  - Between major furniture pieces, and furniture to wall, where not a walkway: at least 18-24 inches\n` +
+                  `  Beyond these, apply real room-specific judgment - e.g. a kitchen's work triangle, ` +
                   `or 36 inches behind each dining chair for pull-out and passage.\n\n` +
                   `If exact real-world dimensions aren't visible or given above, estimate reasonable ` +
                   `relative proportions instead - never invent precise measurements you can't ` +
