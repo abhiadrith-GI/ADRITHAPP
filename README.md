@@ -461,14 +461,12 @@ database too, applied twice in a row, both clean.
 ## Build session — Isometric View, the platform's second real tool
 
 Open to any logged-in user — no role restriction, unlike Civil & RCC.
-Two bases, both fully specified in direct conversation before any code
-was written, same process as RCC's stage sequence.
 
-**Base 1 — Actual Top View.** Accepts CAD-exported vector PDFs only. A
-scanned or flattened PDF is rejected outright, before any generation
-happens, with a message to export directly from AutoCAD instead. This
-isn't a soft preference — it's the one thing this base exists to
-guarantee: the output is *exact*, nothing altered from the input.
+**Actual Top View.** Accepts CAD-exported vector PDFs only. A scanned
+or flattened PDF is rejected outright, before any generation happens,
+with a message to export directly from AutoCAD instead. This isn't a
+soft preference — it's the one thing this tool exists to guarantee:
+the output is *exact*, nothing altered from the input.
 
 Getting that distinction right took real testing, not just reasoning
 about it: two actual PDFs were generated — one with genuine vector
@@ -483,73 +481,6 @@ original PDF page — deliberately *not* a reconstruction from the
 extracted lines and text. Reconstructing risks subtle differences
 creeping in; rendering the original page directly does not. That's what
 makes "exact" an honest claim here rather than an approximation.
-
-**Base 2 — Furniture Layout.** Accepts a PDF, room photo, or 3D plan
-photo. One honest limitation worth stating plainly: there's no
-image-generation model available here — Claude can genuinely *see* and
-reason about a room's shape, doors, and windows, but it cannot paint a
-new photorealistic picture the way some consumer apps do. So this base
-works differently: AI analyzes the space and reasons out one specific,
-workable furniture arrangement — required to keep every door's swing
-clear and a walkable path through the room, not left as a decorative
-nice-to-have — and that arrangement gets rendered as a clean, labeled,
-top-down 2D diagram. Arguably more genuinely useful for real furniture
-planning than a stylized render, and consistent with Base 1's top-down
-visual language.
-
-Both bases track a separate 5-generations-per-day allowance each —
-confirmed directly, not assumed: using up Top View's daily limit leaves
-Furniture Layout's completely untouched, and a rejected (non-vector) Top
-View attempt never counts against that limit at all.
-
-**A few real things caught and fixed along the way, worth naming
-honestly:** a wrong PDF.js constant name caught by the type checker; the
-rate-limit function was initially written to only handle Top View, which
-would have silently made Furniture Layout share Top View's counter
-instead of tracking its own — caught before shipping, by writing a test
-specifically checking the two stayed independent; and the same
-re-run-safety gap found a few times earlier this session (a `CREATE
-TABLE` without `IF NOT EXISTS`) turned up here too and got the same fix.
-
-Tested against a copy of the real live database, applied twice in a row,
-both clean.
-
-**What genuinely still needs your action, same as the AI precheck
-before:** Furniture Layout's analysis step needs `ANTHROPIC_API_KEY` set
-in Netlify to actually run — without it, the tool tells the person
-plainly that analysis isn't configured yet, rather than failing
-silently or pretending to work.
-
-### Follow-up refinement — questions-first, real standards, any room, SketchUp styling
-
-Four real gaps caught and fixed after the first pass above, all before
-any of it went live:
-
-Furniture Layout now studies the room and asks up to 3 genuinely
-necessary questions — room size if not visible, whether existing
-furniture stays, intended use if unclear — before generating anything,
-matching Base 1's pattern exactly. It generates nothing on a first
-guess.
-
-It's explicitly general-purpose now, not implicitly bedroom-shaped: the
-prompt identifies the actual room type from what's visible (kitchen,
-living room, study, anywhere), and furniture type/label are free-form
-rather than a fixed list, so it isn't boxed into vocabulary from one
-room type.
-
-Real clearance numbers are baked into the generation prompt as hard
-requirements, not left as a vague "keep it workable": 36" main walkway,
-36" kept clear at every door approach, 18-24" general furniture
-spacing — sourced from NKBA/ASID-aligned residential circulation
-standards. Room-specific judgment beyond that (a kitchen's work
-triangle, dining chair pull-out space) is left to Claude's own real
-architectural knowledge, applied to whatever room was actually
-identified.
-
-The output rendering was rebuilt for a proper SketchUp-style look:
-directional face shading (top/front/side of each piece at different
-lightness, not flat single-tone boxes), a soft ground shadow under the
-model, and real height estimates per piece rather than uniform blocks.
 
 ### Note — Anthropic API key rotated
 

@@ -21,7 +21,7 @@ type Tool = {
 const TOOLS: Tool[] = [
   {
     name: "Isometric View",
-    description: "Exact top view from CAD, plus AI furniture layouts",
+    description: "Exact top view from CAD, turned into a clear 3D view",
     icon: "isometric",
     href: "/dashboard/isometric-view",
     status: "open",

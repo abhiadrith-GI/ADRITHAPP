@@ -32,17 +32,6 @@ export default async function IsometricViewHubPage() {
               Pick a floor from a CAD-exported PDF, get a clear 3D view of it. 5 per day.
             </p>
           </Link>
-
-          <Link
-            href="/dashboard/isometric-view/furniture-layout"
-            className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4"
-          >
-            <p className="text-sm font-semibold">Furniture Layout</p>
-            <p className="mt-1 text-xs text-[var(--adrith-dim-2)]">
-              AI-suggested, workable arrangement for any room — kitchen, living room, bedroom,
-              anywhere — from a PDF or photo.
-            </p>
-          </Link>
         </div>
       </div>
     </main>

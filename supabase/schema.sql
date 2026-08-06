@@ -418,10 +418,12 @@ create table sign_offs (
 
 -- ----------------------------------------------------------------------------
 -- ISOMETRIC VIEW TOOL
--- Two bases: "top_view" (Actual Top View - exact, vector-PDF-only
--- reproduction) and "furniture_layout" (AI-suggested furniture
--- arrangement from a PDF, room photo, or 3D plan photo). Open to any
--- logged-in user - no role restriction, unlike Civil & RCC.
+-- "top_view" (exact vector-PDF-only reproduction) is the only base the
+-- app creates going forward - Furniture Layout was fully removed. The
+-- check constraint below still permits the old "furniture_layout" value
+-- deliberately, so historical rows from before its removal stay valid
+-- rather than needing a data migration for a purely cosmetic cleanup.
+-- Open to any logged-in user - no role restriction, unlike Civil & RCC.
 -- ----------------------------------------------------------------------------
 create table if not exists isometric_generations (
   id uuid primary key default gen_random_uuid(),
