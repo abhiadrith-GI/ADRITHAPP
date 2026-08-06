@@ -4,3 +4,13 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Next.js API routes on Netlify bundle into one function
+# (___netlify-server-handler). The AI-calling routes can genuinely take
+# longer than the 10-second default now that the prompts require more
+# thorough, explicit reasoning before the final answer - confirmed as a
+# real, common pattern for exactly this (a serverless function proxying
+# Anthropic API calls). This raises the ceiling; see the accompanying
+# note about one more real step this may still need.
+[functions."___netlify-server-handler"]
+  timeout = 26
