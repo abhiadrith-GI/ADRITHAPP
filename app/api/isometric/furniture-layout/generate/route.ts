@@ -19,7 +19,7 @@ import { createClient } from "@/lib/supabase/server";
  * rule for every possible room.
  */
 export async function POST(req: NextRequest) {
-  const { base64, mediaType, roomTypeGuess, questionsAndAnswers, generationId } = await req.json();
+  const { base64, mediaType, roomLabel, questionsAndAnswers, generationId } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -75,7 +75,9 @@ export async function POST(req: NextRequest) {
               {
                 type: "text",
                 text:
-                  `This room was identified as: ${roomTypeGuess ?? "a room in a house"}. ` +
+                  `This image may show more than one room. Focus ONLY on: ${roomLabel ?? "the room shown"}. ` +
+                  `Completely ignore any other rooms visible in the same image - do not furnish, ` +
+                  `describe, or place anything for them.\n\n` +
                   (qaText ? `Additional context from the person:\n${qaText}\n\n` : "") +
                   `Identify the room's actual shape, doors, and windows first.\n\n` +
                   `Then plan the furniture arrangement in two clearly separate steps - this is how ` +

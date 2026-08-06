@@ -74,19 +74,21 @@ export async function POST(req: NextRequest) {
               {
                 type: "text",
                 text:
-                  `This is a room from somewhere in a house - it could be a bedroom, living room, ` +
-                  `kitchen, dining room, study, or any other room. Do not assume which one without ` +
-                  `looking - identify it from what's actually visible.\n\n` +
-                  `Before planning any furniture arrangement, ask up to 3 short questions ONLY about ` +
-                  `things that genuinely can't be determined from the image and would meaningfully ` +
-                  `change the layout - for example: the room's approximate real-world size if no ` +
-                  `scale is visible, whether existing furniture shown needs to stay or can be ` +
-                  `replaced, or the room's intended use if that's genuinely ambiguous from what's ` +
-                  `shown. Do not ask about things you can already see. If nothing genuinely needs ` +
-                  `asking, respond with exactly: NONE\n\n` +
+                  `This image may show a single room, or a whole floor plan / photo with several ` +
+                  `rooms visible at once (a kitchen, a hall, bedrooms, etc). This tool only ` +
+                  `furnishes ONE room per generation - so if more than one room is actually shown, ` +
+                  `identify every distinct room by its real label or an obvious description (e.g. ` +
+                  `"Kitchen", "Bedroom 1", "Hall") - do not guess at rooms that aren't actually shown. ` +
+                  `If only one room is shown, list just that one.\n\n` +
+                  `Before planning any furniture arrangement, also ask up to 2 short questions ONLY ` +
+                  `about things that genuinely can't be determined from the image and would ` +
+                  `meaningfully change the layout - for example: the room's approximate real-world ` +
+                  `size if no scale is visible, or whether existing furniture shown needs to stay or ` +
+                  `can be replaced. Do not ask about things you can already see, and do not ask which ` +
+                  `room to furnish here - that's handled separately.\n\n` +
                   `Respond with ONLY valid JSON, no other text: ` +
-                  `{"room_type_guess":"e.g. Living Room","questions":["...","..."]} - ` +
-                  `or {"room_type_guess":"...","questions":[]} if nothing needs asking.`,
+                  `{"rooms_detected":["Kitchen","Bedroom 1"],"questions":["...","..."]} - ` +
+                  `or {"rooms_detected":["Living Room"],"questions":[]} if only one room and nothing needs asking.`,
               },
             ],
           },
@@ -112,13 +114,13 @@ export async function POST(req: NextRequest) {
       aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return NextResponse.json({ room_type_guess: "Room", questions: [], generationId: reservation.id });
+      return NextResponse.json({ rooms_detected: ["Room"], questions: [], generationId: reservation.id });
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
     return NextResponse.json({
-      room_type_guess: parsed.room_type_guess ?? "Room",
-      questions: Array.isArray(parsed.questions) ? parsed.questions.slice(0, 3) : [],
+      rooms_detected: Array.isArray(parsed.rooms_detected) && parsed.rooms_detected.length ? parsed.rooms_detected : ["Room"],
+      questions: Array.isArray(parsed.questions) ? parsed.questions.slice(0, 2) : [],
       generationId: reservation.id,
     });
   } catch (err) {

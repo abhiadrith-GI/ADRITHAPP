@@ -25,7 +25,8 @@ export default async function FurnitureLayoutPage() {
         </Link>
         <h1 className="mt-3 text-xl font-semibold">Furniture Layout</h1>
         <p className="mt-1 text-sm text-[var(--adrith-dim-2)]">
-          Any room in the house — studies first, asks if anything&apos;s unclear, then suggests a
+          Any room in the house — if several are shown at once, asks which one to furnish, then
+          suggests a
           workable arrangement with real clearance standards applied.
         </p>
 

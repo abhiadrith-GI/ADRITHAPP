@@ -193,7 +193,20 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
       // gets sent to the AI, and it's also what gets rendered into the
       // final 3D view later. A fresh copy of the bytes here, since this
       // buffer is separate from whatever handleGenerate reads later.
-      const viewport = page.getViewport({ scale: 2.5 });
+      //
+      // The scale is capped adaptively against the PDF's own native page
+      // size, not just multiplied blindly - a genuinely large-format
+      // export (some real architectural sheets are far wider than a
+      // standard page) would otherwise produce an image well past
+      // typical browser canvas limits and API payload limits, failing
+      // silently with no useful error. 2200px on the longer side is
+      // generous for real AI-vision quality while staying well within
+      // safe limits either way.
+      const nativeViewport = page.getViewport({ scale: 1 });
+      const MAX_DIMENSION = 2200;
+      const nativeMaxDim = Math.max(nativeViewport.width, nativeViewport.height);
+      const scale = Math.min(2.5, MAX_DIMENSION / nativeMaxDim);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;

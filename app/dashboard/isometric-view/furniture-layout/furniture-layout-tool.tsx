@@ -164,7 +164,8 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
 
   const [stage, setStage] = useState<Stage>("idle");
   const [message, setMessage] = useState<string | null>(null);
-  const [roomTypeGuess, setRoomTypeGuess] = useState<string>("");
+  const [roomsDetected, setRoomsDetected] = useState<string[]>([]);
+  const [selectedRoom, setSelectedRoom] = useState<string>("");
   const [questions, setQuestions] = useState<string[]>([]);
   const [answers, setAnswers] = useState<string[]>([]);
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -178,7 +179,14 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
       const bytes = new Uint8Array(await file.arrayBuffer());
       const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
       const page = await doc.getPage(1);
-      const viewport = page.getViewport({ scale: 2 });
+      // Same adaptive cap as Top View: an unusually large-format PDF
+      // export otherwise produces an image well past safe browser/API
+      // limits, failing with no useful error.
+      const nativeViewport = page.getViewport({ scale: 1 });
+      const MAX_DIMENSION = 2200;
+      const nativeMaxDim = Math.max(nativeViewport.width, nativeViewport.height);
+      const scale = Math.min(2, MAX_DIMENSION / nativeMaxDim);
+      const viewport = page.getViewport({ scale });
       const canvas = document.createElement("canvas");
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -230,14 +238,17 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
         return;
       }
 
-      setRoomTypeGuess(result.room_type_guess);
+      setRoomsDetected(result.rooms_detected ?? ["Room"]);
       generationIdRef.current = result.generationId ?? null;
-      if (result.questions?.length) {
-        setQuestions(result.questions);
-        setAnswers(new Array(result.questions.length).fill(""));
+      const rooms: string[] = result.rooms_detected ?? ["Room"];
+      if (rooms.length === 1) setSelectedRoom(rooms[0]);
+
+      if (rooms.length !== 1 || (result.questions ?? []).length > 0) {
+        setQuestions(result.questions ?? []);
+        setAnswers(new Array((result.questions ?? []).length).fill(""));
         setStage("answering");
       } else {
-        await runGenerate(result.room_type_guess, []);
+        await runGenerate(rooms[0], []);
       }
     } catch (err) {
       setStage("error");
@@ -245,7 +256,7 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
     }
   }
 
-  async function runGenerate(roomType: string, qas: QA[]) {
+  async function runGenerate(roomLabel: string, qas: QA[]) {
     setStage("generating");
     setMessage(null);
     try {
@@ -254,7 +265,7 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           ...imageDataRef.current,
-          roomTypeGuess: roomType,
+          roomLabel,
           questionsAndAnswers: qas,
           generationId: generationIdRef.current,
         }),
@@ -358,9 +369,27 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
 
       {stage === "answering" && (
         <div className="mt-3 rounded-lg border border-[var(--adrith-rust)] p-3">
-          <p className="mb-2 text-xs uppercase tracking-wider text-[var(--adrith-rust)]">
-            Looks like: {roomTypeGuess} — a few questions first
-          </p>
+          {roomsDetected.length > 1 && (
+            <div className="mb-3">
+              <p className="mb-2 text-xs uppercase tracking-wider text-[var(--adrith-rust)]">
+                This shows more than one room — which one should be furnished?
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {roomsDetected.map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setSelectedRoom(r)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs ${
+                      selectedRoom === r ? "border-[var(--adrith-rust)] text-[var(--adrith-rust)]" : "border-white/20"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {questions.map((q, i) => (
             <div key={i} className="mb-3">
               <p className="mb-1 text-sm">{q}</p>
@@ -379,11 +408,12 @@ export function FurnitureLayoutTool({ remainingToday }: { remainingToday: number
           <button
             onClick={() =>
               runGenerate(
-                roomTypeGuess,
+                selectedRoom,
                 questions.map((q, i) => ({ question: q, answer: answers[i] }))
               )
             }
-            className="mt-1 w-full rounded-lg bg-[var(--adrith-rust)] py-2.5 text-sm font-semibold text-black"
+            disabled={roomsDetected.length > 1 && !selectedRoom}
+            className="mt-1 w-full rounded-lg bg-[var(--adrith-rust)] py-2.5 text-sm font-semibold text-black disabled:opacity-50"
           >
             Continue
           </button>
