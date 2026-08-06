@@ -7,28 +7,20 @@ import {
   drawPoly,
   drawGroundShadow,
   drawWallSegment,
-  trimWallSegment,
   DEFAULT_WALL_T_FT,
   DEFAULT_WALL_H_FT,
-  type Opening,
   type WallSegment,
 } from "@/lib/isometric-render";
+import { extractRawSegments, filterToWalls, mergeToCenterlines, findBoundaryCandidates, type Centerline } from "@/lib/vector-plan-extraction";
+import { assembleWallPlan, type PlanAnalysis } from "@/lib/plan-assembly";
 
-type RawWall = {
-  ax: number;
-  ay: number;
-  bx: number;
-  by: number;
-  inward: { x: number; y: number };
-  opening?: Opening;
-};
 type RoomLabel = { label: string; x: number; y: number };
 type FloorPlan = {
   floor_label: string;
   overall_width_ft: number;
   overall_depth_ft: number;
   wall_height_ft: number;
-  walls: RawWall[];
+  walls: WallSegment[];
   room_labels: RoomLabel[];
   notes: string;
 };
@@ -88,21 +80,10 @@ function drawFloorMassing(canvas: HTMLCanvasElement, plan: FloorPlan) {
   const TONE_TOP = "#fbf9f6";
   const TONE_END = "#d8d0c4";
 
-  const segments: WallSegment[] = (plan.walls ?? []).map((w) => {
-    const isHorizontal = Math.abs(w.ay - w.by) < Math.abs(w.ax - w.bx);
-    const seg: WallSegment = {
-      a: { x: w.ax, y: w.ay },
-      b: { x: w.bx, y: w.by },
-      thicknessDir: w.inward,
-      opening: w.opening ?? null,
-      orientation: isHorizontal ? "horizontal" : "vertical",
-    };
-    return trimWallSegment(seg, wallT);
-  });
-
-  // Back-to-front for this camera angle - segments nearer the far
-  // (low x+y) corner drawn first, nearer ones drawn last.
-  segments.sort((s1, s2) => s2.a.x + s2.a.y - (s1.a.x + s1.a.y));
+  // Walls arrive already assembled and trimmed (real extracted geometry
+  // combined with AI's boundary/scale confirmation) - just order them
+  // back-to-front for this camera angle and draw.
+  const segments = [...(plan.walls ?? [])].sort((s1, s2) => s2.a.x + s2.a.y - (s1.a.x + s1.a.y));
   for (const seg of segments) {
     drawWallSegment(ctx, proj, seg, wallT, h, TONE_OUTER, TONE_INNER, TONE_TOP, TONE_END);
   }
@@ -124,6 +105,12 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
   const pdfFileRef = useRef<File | null>(null);
   const rasterImageRef = useRef<{ base64: string; mediaType: string } | null>(null);
   const generationIdRef = useRef<string | null>(null);
+  const extractionRef = useRef<{
+    centerlines: Centerline[];
+    candidates: { minXPct: number; maxXPct: number; minYPct: number; maxYPct: number }[];
+    imageWidthPt: number;
+    imageHeightPt: number;
+  } | null>(null);
 
   const [stage, setStage] = useState<Stage>("idle");
   const [message, setMessage] = useState<string | null>(null);
@@ -215,6 +202,30 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
       const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
       rasterImageRef.current = { base64: dataUrl.split(",")[1], mediaType: "image/jpeg" };
 
+      // Real, exact wall extraction directly from the PDF's own vector
+      // data - not a picture for AI to guess from. This runs alongside
+      // the rasterized image; AI's job later is only to confirm which
+      // extracted rectangle (if any) is the true building versus a
+      // site/plot boundary, and to read labels - never to guess wall
+      // positions itself.
+      const rawSegments = await extractRawSegments(page, OPS);
+      const wallSegments = filterToWalls(rawSegments);
+      const centerlines = mergeToCenterlines(wallSegments);
+      const boundaryCandidates = findBoundaryCandidates(centerlines);
+      const imageWidthPt = nativeViewport.width;
+      const imageHeightPt = nativeViewport.height;
+      extractionRef.current = {
+        centerlines,
+        candidates: boundaryCandidates.map((c) => ({
+          minXPct: (c.minX / imageWidthPt) * 100,
+          maxXPct: (c.maxX / imageWidthPt) * 100,
+          minYPct: (c.minY / imageHeightPt) * 100,
+          maxYPct: (c.maxY / imageHeightPt) * 100,
+        })),
+        imageWidthPt,
+        imageHeightPt,
+      };
+
       setStage("studying");
       const resp = await fetch("/api/isometric/top-view/study", {
         method: "POST",
@@ -263,6 +274,7 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
           floorLabel,
           questionsAndAnswers: qas,
           generationId: generationIdRef.current,
+          candidateBoundaries: extractionRef.current?.candidates ?? [],
         }),
       });
       const result = await resp.json();
@@ -273,7 +285,34 @@ export function TopViewTool({ remainingToday }: { remainingToday: number }) {
         return;
       }
 
-      setFloorPlan(result.floorPlan);
+      if (!extractionRef.current) {
+        setStage("error");
+        setMessage("Missing extracted plan data — please start over.");
+        return;
+      }
+
+      // Combine the exact, extracted wall geometry with AI's narrow
+      // confirmation of the true boundary, scale, and labels - this is
+      // the actual assembly step, not another AI guess.
+      const analysis = result.analysis as PlanAnalysis;
+      const boundaryCandidatesPt = findBoundaryCandidates(extractionRef.current.centerlines);
+      const assembled = assembleWallPlan(
+        extractionRef.current.centerlines,
+        boundaryCandidatesPt,
+        analysis,
+        extractionRef.current.imageWidthPt,
+        extractionRef.current.imageHeightPt
+      );
+
+      setFloorPlan({
+        floor_label: floorLabel,
+        overall_width_ft: assembled.overallWidthFt,
+        overall_depth_ft: assembled.overallDepthFt,
+        wall_height_ft: analysis.wall_height_ft || DEFAULT_WALL_H_FT,
+        walls: assembled.walls,
+        room_labels: assembled.roomLabels,
+        notes: analysis.notes,
+      });
       setStage("ready");
     } catch (err) {
       setStage("error");

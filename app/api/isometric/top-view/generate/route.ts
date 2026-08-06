@@ -2,20 +2,26 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Generates the wall structure for exactly ONE floor from the plan
- * sheet, as real wall centerline segments in real feet - not room
- * percentages. This mirrors the actual technique proven correct in a
- * real SketchUp model built via the Trimble connector: real 5-inch
- * walls, real 9ft height, and a consistent corner rule (horizontal
- * walls own their corners at full length; vertical walls get trimmed
- * automatically by the renderer, not asked of the AI here).
- *
- * The AI's job is spatial understanding - where walls actually are,
- * what openings they have - not working out corner-joining arithmetic
- * itself. That trimming happens deterministically in the renderer.
+ * Generates the wall structure for exactly ONE floor - as a hybrid, not
+ * a single AI-vision guess. The client already extracted every real
+ * wall-like line directly from the PDF's own vector data (exact
+ * coordinates, no guessing) and found candidate boundary rectangles
+ * geometrically. AI's job here is narrow and checkable: confirm or
+ * correct which rectangle is the true building (a real plan sheet often
+ * also shows a separate site/plot boundary, confirmed as a real,
+ * recurring case), read the plan's own stated overall dimensions for
+ * scale, and read each room's label and position. AI is never asked to
+ * guess wall positions from scratch - that's exact, extracted data.
  */
 export async function POST(req: NextRequest) {
-  const { base64, mediaType, floorLabel, questionsAndAnswers, generationId } = await req.json();
+  const {
+    base64,
+    mediaType,
+    floorLabel,
+    questionsAndAnswers,
+    generationId,
+    candidateBoundaries, // [{minXPct,maxXPct,minYPct,maxYPct}] - as % of image size
+  } = await req.json();
 
   const supabase = await createClient();
   const {
@@ -25,12 +31,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  // SECURITY: require the reservation made by the study step, rather
-  // than independently checking the remaining count here - the slot was
-  // already reserved there. This also closes a direct bypass: calling
-  // this route without ever having called /study, which an independent
-  // recheck alone wouldn't catch, since no row would exist yet to count
-  // against the limit either way.
   if (!generationId) {
     return NextResponse.json({ error: "Missing generation reservation." }, { status: 400 });
   }
@@ -54,6 +54,15 @@ export async function POST(req: NextRequest) {
     .map((qa: { question: string; answer: string }) => `Q: ${qa.question}\nA: ${qa.answer || "(not answered)"}`)
     .join("\n");
 
+  const candidatesText: string = Array.isArray(candidateBoundaries) && candidateBoundaries.length
+    ? candidateBoundaries
+        .map(
+          (c: { minXPct: number; maxXPct: number; minYPct: number; maxYPct: number }, i: number) =>
+            `Candidate ${String.fromCharCode(65 + i)}: spans ${c.minXPct.toFixed(0)}%-${c.maxXPct.toFixed(0)}% of the image width, ${c.minYPct.toFixed(0)}%-${c.maxYPct.toFixed(0)}% of the image height.`
+        )
+        .join("\n")
+    : "";
+
   try {
     const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -76,54 +85,28 @@ export async function POST(req: NextRequest) {
                   `This floor plan sheet may show multiple floors. Focus ONLY on: ${floorLabel}. ` +
                   `Ignore any other floors shown on the same sheet.\n\n` +
                   (qaText ? `Additional context from the person:\n${qaText}\n\n` : "") +
-                  `Work out this floor's real layout in two clearly separate steps - this is how ` +
-                  `real floor-plan reconstruction is actually done, not a shortcut:\n\n` +
-                  `STEP 1 - build the adjacency graph first, before any coordinates exist:\n` +
-                  `- Read every room's own labeled width x depth on the sheet. These are real ` +
-                  `numbers - use them exactly, don't round or approximate them.\n` +
-                  `- For every room, explicitly list which OTHER rooms it actually touches on the ` +
-                  `sheet, and on which specific side (north/south/east/west). Write this out room by ` +
-                  `room before doing anything else - e.g. "Kitchen: touches Hall on its south side. ` +
-                  `Hall: touches Kitchen (north), touches Bedroom2 (east)." Get this topology right ` +
-                  `first; coordinates come only after.\n\n` +
-                  `STEP 2 - place rooms in order, each one anchored to a neighbor already placed:\n` +
-                  `- Place one room first, anywhere. Then place each further room ONLY relative to a ` +
-                  `neighbor from your STEP 1 list that's already placed - never compute a room's ` +
-                  `position independently of its stated neighbors.\n` +
-                  `- The critical rule: if two rooms share a wall on your adjacency list, they MUST ` +
-                  `use the exact same coordinate range along that shared wall - e.g. if Bedroom, ` +
-                  `Toilet, and Bedroom2 all stack in one column sharing the same wall line, they all ` +
-                  `share the same x-range (or y-range), not just "roughly near" each other. This is ` +
-                  `the single most common real error - a room ending up under the wrong column - so ` +
-                  `check every shared-wall pair explicitly before finalizing.\n` +
-                  `- A small gap between labeled room dimensions and the overall building footprint ` +
-                  `is normal and expected - that's wall thickness, typically 4-6 inches for interior ` +
-                  `partitions and 8-10 inches for exterior walls, not a mistake to paper over.\n` +
-                  `- Last check: do the rooms along each side, added up, land close to the plan's own ` +
-                  `overall width and depth? If not, revisit STEP 1 - an adjacency was likely misread.\n\n` +
-                  `Only estimate reasonable proportions where a dimension is genuinely not labeled ` +
-                  `anywhere on the sheet.\n\n` +
-                  `Describe every wall as a straight centerline segment in real feet - both the ` +
-                  `outer perimeter walls and every interior partition between rooms. For each ` +
-                  `segment, give its two endpoints (x,y in feet, with (0,0) at one corner of this ` +
-                  `floor), and which side of the wall faces "into" the building interior (as a unit ` +
-                  `direction: for a wall running left-right, inward is usually {"x":0,"y":1} or ` +
-                  `{"x":0,"y":-1}; for a wall running up-down, inward is usually {"x":1,"y":0} or ` +
-                  `{"x":-1,"y":0}).\n\n` +
-                  `For each wall, note any single door or window opening on it: how far from the ` +
-                  `first endpoint it starts and ends (as a fraction 0-1 of that wall's own length), ` +
-                  `and its height band in feet (doors: 0 to about 6.75ft; windows: roughly 2.5ft to ` +
-                  `6.5ft sill-to-head, adjust if the plan indicates otherwise). Leave openings out ` +
-                  `entirely for walls with none.\n\n` +
-                  `Also give each room's label and its approximate center point in feet, for placing ` +
-                  `text - this doesn't need to be precise, just inside that room.\n\n` +
+                  (candidatesText
+                    ? `The plan's own exact line data was already measured directly (not guessed), ` +
+                      `finding these candidate rectangles:\n${candidatesText}\n\n` +
+                      `Some plans show a site/property boundary as well as the actual building - if ` +
+                      `so, these are usually two distinct rectangles, one clearly larger. Look at the ` +
+                      `image and identify which candidate letter (if any) is the TRUE BUILDING outline ` +
+                      `specifically - not a property line, plot boundary, or setback. If the true ` +
+                      `building's actual outline doesn't match any candidate closely (e.g. real walls ` +
+                      `were missed by automatic detection), instead describe the building's real ` +
+                      `outline directly as approximate percentages of the image width/height, the same ` +
+                      `way the candidates are described above.\n\n`
+                    : "") +
+                  `Read the plan's own overall stated width and depth if labeled anywhere (e.g. a ` +
+                  `dimension line reading "21'"), and use that real number for scale - don't estimate ` +
+                  `if a real number is visible. Read every room's own label and its real position.\n\n` +
                   `Respond with ONLY valid JSON, no other text, in exactly this shape:\n` +
-                  `{"floor_label":"${floorLabel}","overall_width_ft":0,"overall_depth_ft":0,` +
-                  `"wall_height_ft":9,"walls":[{"ax":0,"ay":0,"bx":0,"by":0,` +
-                  `"inward":{"x":0,"y":1},"opening":{"t0":0,"t1":0,"z0":0,"z1":0}}],` +
-                  `"room_labels":[{"label":"e.g. Bedroom","x":0,"y":0}],` +
+                  `{"matched_candidate":"A" or null,"true_building_bounds":{"minXPct":0,"maxXPct":0,` +
+                  `"minYPct":0,"maxYPct":0} or null,"overall_width_ft":0,"overall_depth_ft":0,` +
+                  `"wall_height_ft":9,"room_labels":[{"label":"e.g. Bedroom","x_pct":0,"y_pct":0}],` +
                   `"notes":"one short sentence a client would find genuinely helpful"}\n` +
-                  `Omit "opening" entirely for a wall with no door or window.`,
+                  `Set "matched_candidate" to null and fill "true_building_bounds" only when no ` +
+                  `candidate is a good match; otherwise set "true_building_bounds" to null.`,
               },
             ],
           },
@@ -150,11 +133,11 @@ export async function POST(req: NextRequest) {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       await supabase.from("isometric_generations").delete().eq("id", reservation.id);
-      return NextResponse.json({ error: "Could not read a floor layout from this plan." }, { status: 502 });
+      return NextResponse.json({ error: "Could not read this plan's real dimensions and labels." }, { status: 502 });
     }
 
-    const floorPlan = JSON.parse(jsonMatch[0]);
-    return NextResponse.json({ floorPlan, generationId: reservation.id });
+    const analysis = JSON.parse(jsonMatch[0]);
+    return NextResponse.json({ analysis, generationId: reservation.id });
   } catch (err) {
     await supabase.from("isometric_generations").delete().eq("id", reservation.id);
     return NextResponse.json(
