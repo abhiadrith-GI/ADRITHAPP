@@ -25,8 +25,18 @@ type FoundUser = {
  * not just this form) — anyone else who opens this will just get a clear
  * error back from Supabase when they try, rather than this form pretending
  * the option isn't there at all.
+ *
+ * onAdded is optional - the project detail page doesn't need it (it just
+ * refreshes to re-fetch the real list from the server), but the new-project
+ * wizard does, since there's no server page to refresh yet at that point.
  */
-export function AddMemberForm({ projectId }: { projectId: string }) {
+export function AddMemberForm({
+  projectId,
+  onAdded,
+}: {
+  projectId: string;
+  onAdded?: (member: { full_name: string; role_on_project: UserRole; is_project_designer: boolean }) => void;
+}) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -83,6 +93,12 @@ export function AddMemberForm({ projectId }: { projectId: string }) {
       setAdding(false);
       return;
     }
+
+    onAdded?.({
+      full_name: found.full_name,
+      role_on_project: roleOnProject,
+      is_project_designer: canBeDesigner && makeDesigner,
+    });
 
     setEmail("");
     setFound(undefined);

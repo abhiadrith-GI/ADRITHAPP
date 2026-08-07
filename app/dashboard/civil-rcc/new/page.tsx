@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { buildStartingStageOptions, type UserRole } from "@/types/database";
 import { RingBackground } from "@/components/ring-background";
+import { AddMemberForm } from "@/components/add-member-form";
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "owner", label: "Owner" },
@@ -15,9 +16,15 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "student", label: "Student" },
 ];
 
+type AddedMember = { full_name: string; role_on_project: UserRole; is_project_designer: boolean };
+
 export default function NewProjectPage() {
   const router = useRouter();
   const supabase = createClient();
+
+  const [step, setStep] = useState<"details" | "team">("details");
+  const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
+  const [addedMembers, setAddedMembers] = useState<AddedMember[]>([]);
 
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
@@ -98,7 +105,62 @@ export default function NewProjectPage() {
       return;
     }
 
-    router.push(`/dashboard/civil-rcc/${project.id}`);
+    setCreatedProjectId(project.id);
+    setLoading(false);
+    setStep("team");
+  }
+
+  if (step === "team" && createdProjectId) {
+    return (
+      <main className="relative min-h-screen overflow-hidden px-4 py-8">
+        <RingBackground cyPercent={7} bright={false} />
+
+        <div className="relative z-10 mx-auto max-w-md">
+          <p className="font-mono text-xs text-[var(--adrith-dim-2)]">
+            {name || "New project"} — created
+          </p>
+          <h1 className="mb-2 mt-3 text-lg font-bold">Add your team</h1>
+          <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">
+            Add anyone else involved — contractor, owner, engineer, or
+            student — before moving on. Only registered ADRITH accounts can
+            be added; you can always add more later from the project page.
+          </p>
+
+          {addedMembers.length > 0 && (
+            <div className="mb-6 flex flex-col gap-2">
+              <p className="font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
+                Added so far
+              </p>
+              {addedMembers.map((m, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-lg border border-white/15 bg-[var(--adrith-card)] px-3 py-2 text-sm"
+                >
+                  <span>{m.full_name}</span>
+                  <span className="text-xs text-[var(--adrith-dim-2)]">
+                    {m.role_on_project}
+                    {m.is_project_designer && " · Designer"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <AddMemberForm
+            projectId={createdProjectId}
+            onAdded={(m) => setAddedMembers((prev) => [...prev, m])}
+          />
+
+          <button
+            type="button"
+            onClick={() => router.push(`/dashboard/civil-rcc/${createdProjectId}`)}
+            className="mt-6 w-full rounded-lg bg-[var(--adrith-rust)] py-3 text-sm font-semibold text-black"
+          >
+            {addedMembers.length > 0 ? "Continue to project" : "Skip for now"}
+          </button>
+        </div>
+      </main>
+    );
   }
 
   return (

@@ -46,7 +46,7 @@ export default async function ProjectDetailPage({
 
   const stages = (stagesData as ChecklistStage[] | null) ?? [];
 
-  const [{ data: membership }, { data: profile }] = await Promise.all([
+  const [{ data: membership }, { data: profile }, { data: allMembers }] = await Promise.all([
     supabase
       .from("project_members")
       .select("is_project_designer")
@@ -54,8 +54,18 @@ export default async function ProjectDetailPage({
       .eq("user_id", user.id)
       .maybeSingle(),
     supabase.from("profiles").select("is_platform_admin").eq("id", user.id).single(),
+    supabase
+      .from("project_members")
+      .select("role_on_project, is_project_designer, profiles(full_name)")
+      .eq("project_id", projectId)
+      .order("added_at", { ascending: true }),
   ]);
   const isDesignerOrAdmin = Boolean(membership?.is_project_designer) || Boolean(profile?.is_platform_admin);
+  const members = (allMembers as unknown as {
+    role_on_project: string;
+    is_project_designer: boolean;
+    profiles: { full_name: string } | null;
+  }[] | null) ?? [];
 
   const requestedStageName =
     buildStartingStageOptions(project.requested_floor_count ?? 0).find(
@@ -124,6 +134,24 @@ export default async function ProjectDetailPage({
           <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
             Members
           </p>
+
+          {members.length > 0 && (
+            <div className="mb-4 flex flex-col gap-2">
+              {members.map((m, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-lg border border-white/15 bg-[var(--adrith-card)] px-3 py-2 text-sm"
+                >
+                  <span>{m.profiles?.full_name ?? "—"}</span>
+                  <span className="text-xs text-[var(--adrith-dim-2)]">
+                    {m.role_on_project}
+                    {m.is_project_designer && " · Designer"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {project.created_by === user.id ? (
             <AddMemberForm projectId={project.id} />
           ) : (
