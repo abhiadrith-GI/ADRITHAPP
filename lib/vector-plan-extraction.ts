@@ -85,12 +85,14 @@ export async function extractRawSegments(page: PDFPageForSegments, OPS: OpsSubse
     else if (fn === OPS.constructPath) {
       const flat = (args as unknown as [unknown, [Float32Array]])[1][0];
       let cur: [number, number] | null = null;
+      let subpathStart: [number, number] | null = null;
       let k = 0;
       while (k < flat.length) {
         const opcode = flat[k];
         if (opcode === 0) {
           const p = applyMatrix(ctm, flat[k + 1], flat[k + 2]);
           cur = p;
+          subpathStart = p;
           k += 3;
         } else if (opcode === 1) {
           const p = applyMatrix(ctm, flat[k + 1], flat[k + 2]);
@@ -102,8 +104,24 @@ export async function extractRawSegments(page: PDFPageForSegments, OPS: OpsSubse
           if (cur) segments.push({ x0: cur[0], y0: cur[1], x1: p[0], y1: p[1], lineWidth: currentLineWidth, stroke: currentStroke });
           cur = p;
           k += 7;
+        } else if (opcode === 4) {
+          // closePath - draws back to this subpath's own start point. This
+          // was the real, confirmed bug: both an explicit closePath() call
+          // AND the native PDF rectangle operator ("re", which pdf.js
+          // flattens to this exact same moveTo/lineTo.../closePath shape)
+          // land here. Previously this hit the "unknown opcode" branch
+          // below, which didn't just drop the one closing wall - it broke
+          // out of the whole loop, silently discarding every other room
+          // batched into the same path object after the first one closed.
+          // Verified directly against real pdf.js operator-list output,
+          // including the batched-rooms case, before and after this fix.
+          if (cur && subpathStart && (cur[0] !== subpathStart[0] || cur[1] !== subpathStart[1])) {
+            segments.push({ x0: cur[0], y0: cur[1], x1: subpathStart[0], y1: subpathStart[1], lineWidth: currentLineWidth, stroke: currentStroke });
+          }
+          cur = subpathStart;
+          k += 1;
         } else {
-          break; // unknown opcode - stop this path rather than risk corrupting more data
+          break; // genuinely unknown opcode - stop this path rather than risk corrupting more data
         }
       }
     }
