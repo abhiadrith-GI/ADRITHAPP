@@ -36,6 +36,17 @@ export default async function VastuHubPage() {
           </Link>
 
           <Link
+            href="/dashboard/vastu/ask"
+            className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4"
+          >
+            <p className="text-sm font-semibold">Ask Vastu</p>
+            <p className="mt-1 text-xs text-[var(--adrith-dim-2)]">
+              A real conversation — ask anything, share a photo if it helps,
+              get grounded answers instead of a fixed questionnaire.
+            </p>
+          </Link>
+
+          <Link
             href="/dashboard/vastu/library"
             className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4"
           >

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { RingBackground } from "@/components/ring-background";
 import { ROOM_TYPES, ROOM_RULES } from "@/lib/vastu/rules";
 import { ZONE_NAMES, ZONE_THEME } from "@/lib/vastu/zones";
+import { GUIDANCE_SECTIONS } from "@/lib/vastu/guidance-content";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -74,95 +75,15 @@ export default async function VastuLibraryPage() {
           </div>
         </Section>
 
-        <Section title="A note for flats and apartments">
-          Most homes we work on are flats, not standalone houses — worth
-          addressing honestly. The mainstream view is that Vastu still
-          applies inside a flat: you can&apos;t change the building&apos;s
-          overall orientation, but your own kitchen, bedroom, and entrance
-          placement, plus non-structural remedies like color, still count. A
-          smaller number of practitioners argue the logic weakens somewhat in
-          an apartment, since much of the reasoning assumes open sun and air
-          on most sides. We lean toward the mainstream view, but it&apos;s
-          worth knowing this isn&apos;t unanimous.
-        </Section>
-
-        <Section title="Building and construction">
-          <p>
-            <strong>Before ground is broken:</strong> a Bhoomi Pujan is
-            traditional before excavation, timed against an auspicious date
-            rather than picked at random. We can coordinate this as part of
-            your project timeline.
-          </p>
-          <p className="mt-2">
-            <strong>Shape and height:</strong> square or rectangular plots are
-            favored; an odd number of floors is traditional; keep height in
-            proportion with the surrounding neighborhood.
-          </p>
-          <p className="mt-2">
-            <strong>The Southwest is traditionally built heavier</strong> —
-            and there&apos;s a real reason behind part of this: in our
-            climate, a taller Southwest genuinely shades the rest of the home
-            from harsh afternoon sun.
-          </p>
-          <p className="mt-2">
-            <strong>One tip that&apos;s pure practicality, not tradition:</strong>{" "}
-            avoid a ceiling beam directly above a bed or sofa.
-          </p>
-          <p className="mt-2">
-            <strong>Materials:</strong> wood — teak especially — is the
-            traditional, preferred choice for doors and windows, and solid
-            wood is favored over plastic or heavily processed materials
-            generally.
-          </p>
-        </Section>
-
-        <Section title="Water, sanitary, and electrical">
-          <p>Overhead water tank: Southwest, elevated. Underground tank or borewell: Northeast or North.</p>
-          <p className="mt-2">
-            Septic tank: Northwest is standard. Two practical rules regardless
-            of direction — at least 15 feet from any well or water tank, and
-            never directly in front of the main entrance.
-          </p>
-          <p className="mt-2">
-            Electrical (meter, inverter, generator): Southeast is standard,
-            Northwest as a second choice — though a plain light switch is
-            better placed wherever&apos;s safest to find in the dark than
-            moved purely to satisfy the rule.
-          </p>
-        </Section>
-
-        <Section title="Gardens">
-          <p>
-            Keep the Northeast light and open — lawn or small shrubs only.
-            Holy basil does well in the North, Northeast, or East, or right
-            by the entrance. Avoid planting a tree directly in front of the
-            main entrance.
-          </p>
-          <p className="mt-2">
-            One note that isn&apos;t just tradition: the Peepal tree is
-            sacred and never cut, but its roots spread far enough to
-            genuinely threaten a foundation — best kept well away from the
-            house itself regardless.
-          </p>
-        </Section>
-
-        <Section title="Where tradition meets real science">
-          <p>
-            Some of this has genuine, checkable backing: East-facing rooms
-            really do get gentler morning light. A heavier Southwest really
-            does provide real shade in our climate. That&apos;s not a
-            coincidence — Vastu&apos;s origins are genuinely tied to real
-            climate observation.
-          </p>
-          <p className="mt-2">
-            Some of it is tradition without that same backing — the
-            associations between a direction and your finances or
-            relationships don&apos;t have a demonstrated physical mechanism
-            the way sunlight does, and credentialed scientists have said so
-            publicly. Both are worth knowing. They&apos;re just not the same
-            kind of claim, and we won&apos;t pretend otherwise.
-          </p>
-        </Section>
+        {GUIDANCE_SECTIONS.map((section) => (
+          <Section key={section.title} title={section.title}>
+            {section.paragraphs.map((p, i) => (
+              <p key={i} className={i > 0 ? "mt-2" : undefined}>
+                {p}
+              </p>
+            ))}
+          </Section>
+        ))}
 
         <div className="mt-8 rounded-xl border border-white/15 bg-[var(--adrith-card)] p-4">
           <p className="text-xs leading-relaxed text-[var(--adrith-dim-2)]">

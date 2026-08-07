@@ -1218,7 +1218,134 @@ create policy "users can insert their own vastu assessments"
   to authenticated
   with check (user_id = auth.uid());
 
--- No update/delete policy - same immutability principle already used for
--- checkpoint_evidence and sign_offs. A finished assessment is a record of
--- what was asked and answered at that time; a changed mind means a new
--- assessment, not a silently edited old one.
+-- ============================================================================
+-- ASK VASTU — conversational base inside Vastu Consultation. Text questions
+-- and optional photos in, grounded answers out. Unlike the Direction
+-- Checker, this path DOES call AI - so it gets the same rate-limit
+-- discipline every other AI-calling route in this platform has, not an
+-- exception. Grounding data (room rules, zone themes, guidance content)
+-- lives in lib/vastu/grounding.ts, built from lib/vastu/rules.ts,
+-- lib/vastu/zones.ts, and lib/vastu/guidance-content.ts - the same
+-- verified data the Direction Checker and the Guidance Library page both
+-- already use, not a separate, hand-written knowledge source that could
+-- drift out of sync with either.
+-- ============================================================================
+create table if not exists vastu_chat_conversations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles (id),
+  created_at timestamptz not null default now()
+);
+
+alter table vastu_chat_conversations enable row level security;
+
+drop policy if exists "users can view their own vastu chat conversations" on vastu_chat_conversations;
+drop policy if exists "users can insert their own vastu chat conversations" on vastu_chat_conversations;
+
+create policy "users can view their own vastu chat conversations"
+  on vastu_chat_conversations for select
+  to authenticated
+  using (user_id = auth.uid() or current_user_is_admin());
+
+create policy "users can insert their own vastu chat conversations"
+  on vastu_chat_conversations for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+create table if not exists vastu_chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references vastu_chat_conversations (id) on delete cascade,
+  -- Denormalized on purpose - lets the rate-limit trigger and the RLS
+  -- policies below both work without a join back through conversations.
+  user_id uuid not null references profiles (id),
+  role text not null check (role in ('user', 'assistant')),
+  content text not null,
+  image_storage_path text,
+  created_at timestamptz not null default now()
+);
+
+alter table vastu_chat_messages enable row level security;
+
+drop policy if exists "users can view their own vastu chat messages" on vastu_chat_messages;
+drop policy if exists "users can insert their own vastu chat messages" on vastu_chat_messages;
+
+create policy "users can view their own vastu chat messages"
+  on vastu_chat_messages for select
+  to authenticated
+  using (user_id = auth.uid() or current_user_is_admin());
+
+create policy "users can insert their own vastu chat messages"
+  on vastu_chat_messages for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+-- No update/delete policy - same immutability principle used everywhere
+-- else in this platform. A conversation is a real record of what was
+-- asked and answered; editing history after the fact isn't offered.
+
+-- Rate limit: 40 USER messages/day (assistant replies don't count against
+-- this - only the ones that actually trigger a paid AI call do). 40 is
+-- deliberately more generous than the 5/day on Isometric View, since a
+-- single genuine back-and-forth conversation can easily run 6-10 messages
+-- on its own and this is a much lighter per-call cost, not because abuse
+-- matters less. Same advisory-lock pattern already proven for
+-- checkpoint_evidence and isometric_generations, for the same reason -
+-- so two simultaneous requests can't both slip past the count check
+-- before either commits.
+create or replace function enforce_vastu_chat_message_limit()
+returns trigger as $$
+declare
+  todays_count int;
+begin
+  if new.role != 'user' then
+    return new;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':vastu_chat'));
+
+  select count(*) into todays_count
+  from vastu_chat_messages
+  where user_id = new.user_id
+    and role = 'user'
+    and created_at >= date_trunc('day', now());
+
+  if todays_count >= 40 then
+    raise exception 'Daily message limit (40) already reached for Ask Vastu today';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_vastu_chat_message_limit_trigger on vastu_chat_messages;
+create trigger enforce_vastu_chat_message_limit_trigger
+  before insert on vastu_chat_messages
+  for each row execute function enforce_vastu_chat_message_limit();
+
+-- ----------------------------------------------------------------------------
+-- Storage bucket for Ask Vastu photo uploads. Private, scoped per-user -
+-- same pattern as isometric-files. Path convention:
+-- {user_id}/{conversation_id}/{uuid}.jpg
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('vastu-chat-files', 'vastu-chat-files', false)
+on conflict (id) do nothing;
+
+drop policy if exists "users can view their own vastu chat files" on storage.objects;
+drop policy if exists "users can upload their own vastu chat files" on storage.objects;
+
+create policy "users can view their own vastu chat files"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'vastu-chat-files'
+    and ((storage.foldername(name))[1]::uuid = auth.uid() or current_user_is_admin())
+  );
+
+create policy "users can upload their own vastu chat files"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'vastu-chat-files'
+    and (storage.foldername(name))[1]::uuid = auth.uid()
+  );
+

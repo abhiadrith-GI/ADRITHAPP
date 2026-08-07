@@ -28,6 +28,22 @@ export interface VastuAssessment {
   created_at: string;
 }
 
+export interface VastuChatConversation {
+  id: string;
+  user_id: string;
+  created_at: string;
+}
+
+export interface VastuChatMessage {
+  id: string;
+  conversation_id: string;
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  image_storage_path: string | null;
+  created_at: string;
+}
+
 export interface IsometricGeneration {
   id: string;
   user_id: string;
