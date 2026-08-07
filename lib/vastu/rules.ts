@@ -15,7 +15,10 @@
  *    named that exact combination as the worst-cited defect (toilet/kitchen
  *    in Northeast, toilet in Southwest). Every other avoid-zone defaults to
  *    'intermediate' - a deliberate, documented choice, not a researched
- *    fact for every single case. Minor issues (color, furniture, clutter)
+ *    fact for every single case - with one explicit exception: dining
+ *    room's Southwest avoid is 'minor', since that specific pairing was
+ *    genuinely cited more weakly and less consistently across sources than
+ *    the others below. Minor issues (color, furniture, clutter) generally
  *    aren't zone-based at all and are surfaced separately in report copy.
  */
 
