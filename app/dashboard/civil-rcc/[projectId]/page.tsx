@@ -132,7 +132,7 @@ export default async function ProjectDetailPage({
 
         <div className="mt-10 border-t border-white/10 pt-6">
           <p className="mb-3 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
-            Members
+            Members ({members.length}/4)
           </p>
 
           {members.length > 0 && (
@@ -152,12 +152,17 @@ export default async function ProjectDetailPage({
             </div>
           )}
 
-          {project.created_by === user.id ? (
-            <AddMemberForm projectId={project.id} />
-          ) : (
+          {project.created_by !== user.id ? (
             <p className="text-xs text-[var(--adrith-dim-2)]">
               Only this project&apos;s creator can add members.
             </p>
+          ) : members.length >= 4 ? (
+            <p className="text-xs text-[var(--adrith-dim-2)]">
+              This project has reached its 4-member limit. Remove someone
+              first if you need to add a different person.
+            </p>
+          ) : (
+            <AddMemberForm projectId={project.id} />
           )}
         </div>
 

@@ -126,6 +126,10 @@ export default function NewProjectPage() {
             be added; you can always add more later from the project page.
           </p>
 
+          <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
+            {addedMembers.length + 1}/4 members
+          </p>
+
           {addedMembers.length > 0 && (
             <div className="mb-6 flex flex-col gap-2">
               <p className="font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
@@ -146,10 +150,16 @@ export default function NewProjectPage() {
             </div>
           )}
 
-          <AddMemberForm
-            projectId={createdProjectId}
-            onAdded={(m) => setAddedMembers((prev) => [...prev, m])}
-          />
+          {addedMembers.length + 1 >= 4 ? (
+            <p className="text-xs text-[var(--adrith-dim-2)]">
+              This project has reached its 4-member limit.
+            </p>
+          ) : (
+            <AddMemberForm
+              projectId={createdProjectId}
+              onAdded={(m) => setAddedMembers((prev) => [...prev, m])}
+            />
+          )}
 
           <button
             type="button"

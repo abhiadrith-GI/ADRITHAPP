@@ -226,6 +226,39 @@ create policy "only the project creator can add members"
     exists (select 1 from projects where id = project_id and created_by = auth.uid())
   );
 
+-- Cap: 4 members per project, including the creator - so at most 3 more
+-- can be added beyond whoever created it. This is a per-project limit
+-- only - the same person can be a member of any number of different
+-- projects with no cap across them, they just have to be added to each
+-- one separately (membership is real, per-project data, not something
+-- that carries over automatically). Advisory-locked per project_id, same
+-- pattern already proven for isometric_generations and the Ask Vastu
+-- message limit - so two near-simultaneous adds on a project sitting at
+-- 3 members can't both slip through and land it at 5.
+create or replace function enforce_project_member_limit()
+returns trigger as $$
+declare
+  current_count int;
+begin
+  perform pg_advisory_xact_lock(hashtext(new.project_id::text || ':members'));
+
+  select count(*) into current_count
+  from project_members
+  where project_id = new.project_id;
+
+  if current_count >= 4 then
+    raise exception 'This project already has the maximum of 4 members (including the creator)';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_project_member_limit_trigger on project_members;
+create trigger enforce_project_member_limit_trigger
+  before insert on project_members
+  for each row execute function enforce_project_member_limit();
+
 -- ----------------------------------------------------------------------------
 -- 3. CHECKLIST STAGES  (Foundation -> Steel -> RCC Casting -> Brickwork ->
 --    Plastering -> Finishing — stage-gated, matches the construction sequence)
