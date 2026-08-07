@@ -1183,3 +1183,42 @@ create policy "only the project's designer can update checkpoint status"
     current_user_is_project_designer((select project_id from checklist_stages where id = stage_id))
     or current_user_is_admin()
   );
+
+-- ============================================================================
+-- Vastu Consultation - questionnaire path (first slice; PDF/photo input is
+-- a deliberate later addition, not built yet). Deliberately simpler than
+-- isometric_generations: this path is entirely deterministic, no AI call
+-- anywhere in it, so there's no paid-API budget to protect and no
+-- reservation/pending-row dance needed. Just a plain record of what was
+-- answered and what the deterministic engine computed from it.
+-- ============================================================================
+create table if not exists vastu_assessments (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles (id),
+  -- Raw answers: [{room, bearingDegrees, source}, ...] - kept alongside the
+  -- computed report so a future rule-engine update doesn't silently
+  -- invalidate what someone already submitted.
+  answers jsonb not null,
+  report jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter table vastu_assessments enable row level security;
+
+drop policy if exists "users can view their own vastu assessments" on vastu_assessments;
+drop policy if exists "users can insert their own vastu assessments" on vastu_assessments;
+
+create policy "users can view their own vastu assessments"
+  on vastu_assessments for select
+  to authenticated
+  using (user_id = auth.uid() or current_user_is_admin());
+
+create policy "users can insert their own vastu assessments"
+  on vastu_assessments for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+-- No update/delete policy - same immutability principle already used for
+-- checkpoint_evidence and sign_offs. A finished assessment is a record of
+-- what was asked and answered at that time; a changed mind means a new
+-- assessment, not a silently edited old one.

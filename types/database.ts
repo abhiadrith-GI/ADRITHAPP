@@ -20,6 +20,14 @@ export interface Profile {
   created_at: string;
 }
 
+export interface VastuAssessment {
+  id: string;
+  user_id: string;
+  answers: unknown; // RoomAnswer[] from lib/vastu/scoring - stored as-is, typed at the call site
+  report: unknown; // VastuReport from lib/vastu/scoring
+  created_at: string;
+}
+
 export interface IsometricGeneration {
   id: string;
   user_id: string;

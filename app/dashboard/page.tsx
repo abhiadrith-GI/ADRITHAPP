@@ -14,10 +14,12 @@ type Tool = {
   status: "open" | "soon";
 };
 
-// Order and status as last confirmed. Civil & RCC and Isometric View now
-// have real, working flows behind them — everything else is fully
-// specified but not yet built, and says so honestly rather than
-// pretending otherwise.
+// Order and status as last confirmed. Civil & RCC, Isometric View, and
+// Vastu Consultation's direction checker now have real, working flows
+// behind them — everything else is fully specified but not yet built, and
+// says so honestly rather than pretending otherwise. Vastu's PDF/photo
+// input path is a deliberate next addition, not built yet — the
+// questionnaire path works standalone in the meantime.
 const TOOLS: Tool[] = [
   {
     name: "Isometric View",
@@ -31,7 +33,7 @@ const TOOLS: Tool[] = [
     description: "Direction & practical guidance",
     icon: "vastu",
     href: "/dashboard/vastu",
-    status: "soon",
+    status: "open",
   },
   {
     name: "Civil & RCC Quality Control",
