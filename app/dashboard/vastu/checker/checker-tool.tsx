@@ -17,19 +17,12 @@ function zoneToBearing(zone: ZoneName): number {
   return ZONE_INDEX[zone] * 22.5;
 }
 
-/** The two 16-zone neighbors flanking a primary direction, for the "lean toward" refinement. */
-function neighbors(primary: ZoneName): [ZoneName, ZoneName] {
-  const i = ZONE_INDEX[primary];
-  return [ZONE_NAMES[(i - 1 + 16) % 16], ZONE_NAMES[(i + 1) % 16]];
-}
-
 export function VastuCheckerTool() {
   const supabase = createClient();
   const [stage, setStage] = useState<Stage>("disclaimer");
   const [selectedRooms, setSelectedRooms] = useState<Set<RoomType>>(new Set(ROOM_TYPES));
   const [roomQueue, setRoomQueue] = useState<RoomType[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
-  const [primaryPick, setPrimaryPick] = useState<ZoneName | null>(null);
   const [answers, setAnswers] = useState<Map<RoomType, ZoneName>>(new Map());
   const [report, setReport] = useState<VastuReport | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -47,7 +40,6 @@ export function VastuCheckerTool() {
     setMessage(null);
     setRoomQueue(queue);
     setQueueIndex(0);
-    setPrimaryPick(null);
     setStage("direction");
   }
 
@@ -56,7 +48,6 @@ export function VastuCheckerTool() {
     const next = new Map(answers);
     next.set(room, zone);
     setAnswers(next);
-    setPrimaryPick(null);
 
     if (queueIndex + 1 < roomQueue.length) {
       setQueueIndex(queueIndex + 1);
@@ -175,52 +166,21 @@ export function VastuCheckerTool() {
           Which direction are you facing?
         </p>
 
-        {!primaryPick ? (
-          <div className="mt-5 grid grid-cols-3 gap-2">
-            {COMPASS_GRID.map((zone, i) =>
-              zone === null ? (
-                <div key={i} />
-              ) : (
-                <button
-                  key={zone}
-                  onClick={() => setPrimaryPick(zone)}
-                  className="aspect-square rounded-lg border border-white/20 bg-[var(--adrith-card)] text-sm font-semibold"
-                >
-                  {zone}
-                </button>
-              )
-            )}
-          </div>
-        ) : (
-          <div className="mt-5">
-            <p className="text-xs text-[var(--adrith-dim-2)]">
-              Straight {primaryPick}, or does it lean more one way? Get this close — it doesn&apos;t need to be exact.
-            </p>
-            <div className="mt-3 flex flex-col gap-2">
+        <div className="mt-5 grid grid-cols-3 gap-2">
+          {COMPASS_GRID.map((zone, i) =>
+            zone === null ? (
+              <div key={i} />
+            ) : (
               <button
-                onClick={() => confirmZone(neighbors(primaryPick)[0])}
-                className="rounded-lg border border-white/20 bg-[var(--adrith-card)] py-3 text-sm"
+                key={zone}
+                onClick={() => confirmZone(zone)}
+                className="aspect-square rounded-lg border border-white/20 bg-[var(--adrith-card)] text-sm font-semibold"
               >
-                Leans toward {neighbors(primaryPick)[0]}
+                {zone}
               </button>
-              <button
-                onClick={() => confirmZone(primaryPick)}
-                className="rounded-lg bg-[var(--adrith-rust)] py-3 text-sm font-semibold text-black"
-              >
-                Straight {primaryPick}
-              </button>
-              <button
-                onClick={() => confirmZone(neighbors(primaryPick)[1])}
-                className="rounded-lg border border-white/20 bg-[var(--adrith-card)] py-3 text-sm"
-              >
-                Leans toward {neighbors(primaryPick)[1]}
-              </button>
-              <button onClick={() => setPrimaryPick(null)} className="mt-1 text-xs text-[var(--adrith-dim-2)]">
-                ← back
-              </button>
-            </div>
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
     );
   }
