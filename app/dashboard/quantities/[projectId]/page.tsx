@@ -39,8 +39,12 @@ export default async function QuantitiesProjectPage({
     .select("stage_group_key, floor_number")
     .eq("project_id", projectId);
 
-  const doneSet = new Set((existingCalcs ?? []).map((c) => `${c.stage_group_key}::${c.floor_number ?? "null"}`));
-  const isDone = (key: string, floor: number | null) => doneSet.has(`${key}::${floor ?? "null"}`);
+  const countMap = new Map<string, number>();
+  for (const c of existingCalcs ?? []) {
+    const k = `${c.stage_group_key}::${c.floor_number ?? "null"}`;
+    countMap.set(k, (countMap.get(k) ?? 0) + 1);
+  }
+  const countFor = (key: string, floor: number | null) => countMap.get(`${key}::${floor ?? "null"}`) ?? 0;
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
@@ -61,7 +65,7 @@ export default async function QuantitiesProjectPage({
           groups={FOUNDATION_GROUPS}
           floor={null}
           projectId={projectId}
-          isDone={isDone}
+          countFor={countFor}
         />
 
         {floorNumbers.map((floorNum) => (
@@ -71,7 +75,7 @@ export default async function QuantitiesProjectPage({
             groups={FLOOR_GROUPS}
             floor={floorNum}
             projectId={projectId}
-            isDone={isDone}
+            countFor={countFor}
           />
         ))}
       </div>
@@ -84,13 +88,13 @@ function StageList({
   groups,
   floor,
   projectId,
-  isDone,
+  countFor,
 }: {
   title: string;
   groups: { key: string; label: string; kind: string }[];
   floor: number | null;
   projectId: string;
-  isDone: (key: string, floor: number | null) => boolean;
+  countFor: (key: string, floor: number | null) => number;
 }) {
   return (
     <div className="mb-6">
@@ -99,7 +103,7 @@ function StageList({
       </p>
       <div className="flex flex-col gap-2">
         {groups.map((g) => {
-          const done = isDone(g.key, floor);
+          const count = countFor(g.key, floor);
           const href = `/dashboard/quantities/${projectId}/${g.key}${floor !== null ? `?floor=${floor}` : ""}`;
           return (
             <Link
@@ -110,10 +114,10 @@ function StageList({
               <span className="text-sm">{g.label}</span>
               <span
                 className={`font-mono text-[10px] uppercase ${
-                  done ? "text-[var(--adrith-rust)]" : "text-[var(--adrith-dim-2)]"
+                  count > 0 ? "text-[var(--adrith-rust)]" : "text-[var(--adrith-dim-2)]"
                 }`}
               >
-                {done ? "Calculated" : "Not yet"}
+                {count > 0 ? `${count} calc${count > 1 ? "s" : ""}` : "Not yet"}
               </span>
             </Link>
           );

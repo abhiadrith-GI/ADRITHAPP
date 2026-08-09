@@ -52,7 +52,17 @@ export interface QuantityCalculation {
   floor_number: number | null;
   inputs: unknown;
   outputs: unknown;
-  updated_at: string;
+  photo_storage_path: string | null;
+  created_at: string;
+}
+
+export interface QuantityDoubtMessage {
+  id: string;
+  user_id: string;
+  project_id: string;
+  stage_group_key: string;
+  question: string;
+  answer: string;
   created_at: string;
 }
 

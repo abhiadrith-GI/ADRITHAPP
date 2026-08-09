@@ -32,13 +32,13 @@ export default async function QuantityCalcPage({
   const group = findGroup(groupKey, floor);
   if (!group) notFound();
 
-  const { data: existing } = await supabase
+  const { data: history } = await supabase
     .from("quantity_calculations")
-    .select("inputs, outputs")
+    .select("id, inputs, outputs, photo_storage_path, created_at")
     .eq("project_id", projectId)
     .eq("stage_group_key", groupKey)
     .eq("floor_number", floor)
-    .maybeSingle();
+    .order("created_at", { ascending: false });
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
@@ -57,9 +57,10 @@ export default async function QuantityCalcPage({
         <QuantityCalcTool
           projectId={projectId}
           groupKey={groupKey}
+          stageLabel={group.label}
           floor={floor}
           group={group}
-          existingInputs={existing?.inputs ?? null}
+          history={history ?? []}
         />
       </div>
     </main>

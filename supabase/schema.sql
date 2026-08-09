@@ -1218,9 +1218,16 @@ create table if not exists quantity_calculations (
   floor_number int,
   inputs jsonb not null,
   outputs jsonb not null,
-  updated_at timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  unique (project_id, stage_group_key, floor_number)
+  -- Optional, matching how Quality Control attaches a photo as reference -
+  -- documentation of what was actually measured, not something any
+  -- calculation depends on. The math never reads this column.
+  photo_storage_path text,
+  created_at timestamptz not null default now()
+  -- Deliberately no unique(project_id, stage_group_key, floor_number) here
+  -- - per instruction, this isn't a one-shot tool. Someone re-measuring,
+  -- trying a different scenario, or just working the same stage again
+  -- later gets a new row each time, not an overwrite of the last one.
+  -- History, not a single current value.
 );
 
 alter table quantity_calculations enable row level security;
@@ -1239,11 +1246,93 @@ create policy "members can insert quantity calculations on their projects"
   to authenticated
   with check (user_id = auth.uid() and is_project_member(project_id));
 
-create policy "members can update quantity calculations on their projects"
-  on quantity_calculations for update
+-- No update/delete policy, and no update trigger below either - each
+-- calculation is now a real historical record the moment it's saved,
+-- same immutability principle used for checkpoint_evidence and sign_offs.
+-- A wrong entry gets corrected by saving a new one, not editing the old
+-- one in place.
+
+insert into storage.buckets (id, name, public)
+values ('quantity-calc-files', 'quantity-calc-files', false)
+on conflict (id) do nothing;
+
+drop policy if exists "members can view their project's quantity calc files" on storage.objects;
+drop policy if exists "members can upload quantity calc files for their projects" on storage.objects;
+
+create policy "members can view their project's quantity calc files"
+  on storage.objects for select
   to authenticated
-  using (is_project_member(project_id))
-  with check (is_project_member(project_id));
+  using (
+    bucket_id = 'quantity-calc-files'
+    and (is_project_member((storage.foldername(name))[1]::uuid) or current_user_is_admin())
+  );
+
+create policy "members can upload quantity calc files for their projects"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'quantity-calc-files'
+    and is_project_member((storage.foldername(name))[1]::uuid)
+  );
+
+-- ----------------------------------------------------------------------------
+-- "Any doubts?" - a narrow, grounded Q&A step before results, same
+-- discipline as Ask Vastu: answers measurement-methodology questions from
+-- the same researched reference this tool's formulas already use, never
+-- does arithmetic itself, and explicitly defers anything about structural
+-- adequacy to a real engineer. Rate-limited for the same reason every
+-- other AI-calling route here is - this one calls AI, the calculator
+-- itself still doesn't.
+-- ----------------------------------------------------------------------------
+create table if not exists quantity_doubt_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles (id),
+  project_id uuid not null references projects (id) on delete cascade,
+  stage_group_key text not null,
+  question text not null,
+  answer text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table quantity_doubt_messages enable row level security;
+
+drop policy if exists "members can view their project's doubt messages" on quantity_doubt_messages;
+drop policy if exists "members can insert doubt messages for their projects" on quantity_doubt_messages;
+
+create policy "members can view their project's doubt messages"
+  on quantity_doubt_messages for select
+  to authenticated
+  using (is_project_member(project_id) or current_user_is_admin());
+
+create policy "members can insert doubt messages for their projects"
+  on quantity_doubt_messages for insert
+  to authenticated
+  with check (user_id = auth.uid() and is_project_member(project_id));
+
+create or replace function enforce_quantity_doubt_limit()
+returns trigger as $$
+declare
+  todays_count int;
+begin
+  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':quantity_doubt'));
+
+  select count(*) into todays_count
+  from quantity_doubt_messages
+  where user_id = new.user_id
+    and created_at >= date_trunc('day', now());
+
+  if todays_count >= 40 then
+    raise exception 'Daily question limit (40) already reached for this today';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_quantity_doubt_limit_trigger on quantity_doubt_messages;
+create trigger enforce_quantity_doubt_limit_trigger
+  before insert on quantity_doubt_messages
+  for each row execute function enforce_quantity_doubt_limit();
 
 -- Same authority as sign-off, extended to day-to-day checkpoint status too
 -- (Pass/Fail/Flag) — reflecting the later decision that only this
