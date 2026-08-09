@@ -43,6 +43,13 @@ const TOOLS: Tool[] = [
     status: "open",
   },
   {
+    name: "RCC Quantity Calculation",
+    description: "Material quantities for the same real projects and stages",
+    icon: "calculator",
+    href: "/dashboard/quantities",
+    status: "open",
+  },
+  {
     name: "Plumbing & Electrical",
     description: "Materials list & quotations",
     icon: "droplet",

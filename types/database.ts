@@ -44,6 +44,18 @@ export interface VastuChatMessage {
   created_at: string;
 }
 
+export interface QuantityCalculation {
+  id: string;
+  project_id: string;
+  user_id: string;
+  stage_group_key: string;
+  floor_number: number | null;
+  inputs: unknown;
+  outputs: unknown;
+  updated_at: string;
+  created_at: string;
+}
+
 export interface IsometricGeneration {
   id: string;
   user_id: string;

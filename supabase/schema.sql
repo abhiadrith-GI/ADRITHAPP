@@ -1189,13 +1189,61 @@ $$ language sql security definer stable;
 
 drop policy "project members can sign off as themselves" on sign_offs;
 
-create policy "only the project's nominated designer can sign off"
-  on sign_offs for insert
+-- ============================================================================
+-- RCC QUANTITY CALCULATION — sits next to Civil & RCC Quality Control,
+-- same real projects and stages, different purpose: material quantities
+-- for procurement, not quality checkpoints. Entirely deterministic, same
+-- principle as the Vastu Direction Checker and everything else in this
+-- platform that can be exact by formula rather than by AI guessing -
+-- doubly true here, since a wrong steel estimate someone mistakes for a
+-- real design number is a genuine safety question, not just a cost one.
+--
+-- Deliberately NOT immutable like checkpoint_evidence/sign_offs - a
+-- mismeasured footing gets re-entered and the same row updates, rather
+-- than accumulating a confusing v1/v2/v3 history where it's unclear which
+-- is current. Open to any project member to create/update, not restricted
+-- to the designer - this is a working procurement tool, not a formal
+-- sign-off record.
+-- ============================================================================
+create table if not exists quantity_calculations (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  user_id uuid not null references profiles (id),
+  -- e.g. "footing", "pcc", "column", "brickwork" - matches a StageGroup key
+  -- from lib/quantity/stage-config.ts, not a raw checklist_stages.stage_key
+  -- (some groups intentionally combine two real stage_keys into one input).
+  stage_group_key text not null,
+  -- null for foundation groups (once per building); 0 = Ground, 1 = 1st, etc.
+  -- for per-floor groups - mirrors checklist_stages.floor_number exactly.
+  floor_number int,
+  inputs jsonb not null,
+  outputs jsonb not null,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  unique (project_id, stage_group_key, floor_number)
+);
+
+alter table quantity_calculations enable row level security;
+
+drop policy if exists "members can view quantity calculations on their projects" on quantity_calculations;
+drop policy if exists "members can insert quantity calculations on their projects" on quantity_calculations;
+drop policy if exists "members can update quantity calculations on their projects" on quantity_calculations;
+
+create policy "members can view quantity calculations on their projects"
+  on quantity_calculations for select
   to authenticated
-  with check (
-    user_id = auth.uid()
-    and current_user_is_project_designer((select project_id from checklist_stages where id = stage_id))
-  );
+  using (is_project_member(project_id) or current_user_is_admin());
+
+create policy "members can insert quantity calculations on their projects"
+  on quantity_calculations for insert
+  to authenticated
+  with check (user_id = auth.uid() and is_project_member(project_id));
+
+create policy "members can update quantity calculations on their projects"
+  on quantity_calculations for update
+  to authenticated
+  using (is_project_member(project_id))
+  with check (is_project_member(project_id));
 
 -- Same authority as sign-off, extended to day-to-day checkpoint status too
 -- (Pass/Fail/Flag) — reflecting the later decision that only this

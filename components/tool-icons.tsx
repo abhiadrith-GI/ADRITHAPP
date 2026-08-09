@@ -4,7 +4,8 @@ export type ToolIconName =
   | "isometric"
   | "droplet"
   | "paint"
-  | "building";
+  | "building"
+  | "calculator";
 
 /** The six approved tool icons from the finalized hub design. */
 export function ToolIcon({
@@ -60,6 +61,19 @@ export function ToolIcon({
         <svg viewBox="0 0 24 24" fill="none" stroke={line} strokeWidth={1.7} className={className}>
           <path d="M4 20V10L12 4L20 10V20H4Z" />
           <path d="M9.5 12.5l1.8 1.8L15 10.5" stroke={rust} strokeWidth={1.8} />
+        </svg>
+      );
+    case "calculator":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={line} strokeWidth={1.7} className={className}>
+          <rect x={5} y={3} width={14} height={18} rx={2} />
+          <rect x={7.5} y={5.5} width={9} height={3.5} rx={0.5} fill={rust} stroke="none" />
+          <circle cx={8.5} cy={13} r={0.9} fill={line} stroke="none" />
+          <circle cx={12} cy={13} r={0.9} fill={line} stroke="none" />
+          <circle cx={15.5} cy={13} r={0.9} fill={line} stroke="none" />
+          <circle cx={8.5} cy={16.5} r={0.9} fill={line} stroke="none" />
+          <circle cx={12} cy={16.5} r={0.9} fill={line} stroke="none" />
+          <circle cx={15.5} cy={16.5} r={0.9} fill={line} stroke="none" />
         </svg>
       );
   }
