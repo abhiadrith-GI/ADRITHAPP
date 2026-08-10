@@ -51,10 +51,10 @@ const TOOLS: Tool[] = [
   },
   {
     name: "Plumbing & Electrical",
-    description: "Materials list & quotations",
+    description: "Standard heights now open; material lists coming",
     icon: "droplet",
     href: "/dashboard/plumbing-electrical",
-    status: "soon",
+    status: "open",
   },
   {
     name: "Color & Flooring",
