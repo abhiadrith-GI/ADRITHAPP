@@ -56,6 +56,39 @@ export interface QuantityCalculation {
   created_at: string;
 }
 
+export interface MaterialList {
+  id: string;
+  project_id: string;
+  created_by: string;
+  trade: "plumbing" | "electrical";
+  room_type: string;
+  items: unknown; // MaterialRoom[] from lib/materials/types - stored as-is
+  source_type: "photo" | "plan" | "description" | null;
+  source_storage_path: string | null;
+  source_description: string | null;
+  status: "draft" | "finalized";
+  finalized_by: string | null;
+  finalized_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MaterialListShopInvite {
+  id: string;
+  material_list_id: string;
+  shop_owner_id: string;
+  invited_by: string;
+  created_at: string;
+}
+
+export interface MaterialListQuotation {
+  id: string;
+  material_list_id: string;
+  shop_owner_id: string;
+  quote_details: string;
+  created_at: string;
+}
+
 export interface QuantityDoubtMessage {
   id: string;
   user_id: string;

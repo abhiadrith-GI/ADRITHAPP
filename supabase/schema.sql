@@ -22,7 +22,7 @@
 -- One row per auth.users row. Holds app-specific fields Supabase Auth
 -- doesn't store natively (role, license info).
 -- ----------------------------------------------------------------------------
-create type user_role as enum ('owner', 'contractor', 'engineer', 'architect', 'student');
+create type user_role as enum ('owner', 'contractor', 'engineer', 'architect', 'student', 'shop_owner');
 
 create table profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -1188,6 +1188,266 @@ returns boolean as $$
 $$ language sql security definer stable;
 
 drop policy "project members can sign off as themselves" on sign_offs;
+
+-- ============================================================================
+-- PLUMBING & ELECTRICAL MATERIAL CALCULATOR — two calculators (trade
+-- distinguishes them), same underlying data model, categorized by room
+-- per instruction. AI reads a photo/plan/description per room and
+-- proposes materials with a real quantity engine backing it - the AI's
+-- job is recognition and description, not inventing numbers from nothing;
+-- see lib/materials/grounding.ts for the actual constraint.
+--
+-- Lifecycle: draft (fully editable) -> finalized (permanently locked,
+-- enforced below by trigger, not just by hiding the edit button in the
+-- UI). No financial content from ADRITH itself anywhere in this schema -
+-- quotations carry a shop owner's own submitted price as free text,
+-- which ADRITH stores and displays but never calculates, checks, or is
+-- responsible for.
+-- ============================================================================
+create table if not exists material_lists (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid not null references projects (id) on delete cascade,
+  created_by uuid not null references profiles (id),
+  trade text not null check (trade in ('plumbing', 'electrical')),
+  room_type text not null,
+  -- Full room-by-room material breakdown as structured JSON - see
+  -- lib/materials/types.ts for the real shape. Replaced wholesale on
+  -- each edit while in draft, same pattern as other structured-data
+  -- tables in this platform (vastu_assessments, quantity_calculations).
+  items jsonb not null default '[]'::jsonb,
+  -- What the AI actually saw, kept for reference even after finalizing.
+  source_type text check (source_type in ('photo', 'plan', 'description')),
+  source_storage_path text,
+  source_description text,
+  status text not null default 'draft' check (status in ('draft', 'finalized')),
+  finalized_by uuid references profiles (id),
+  finalized_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table material_lists enable row level security;
+
+drop policy if exists "project members can view their project's material lists" on material_lists;
+drop policy if exists "invited shop owners can view lists shared with them" on material_lists;
+drop policy if exists "project members can create material lists" on material_lists;
+drop policy if exists "creator can update their own draft material list" on material_lists;
+
+create policy "project members can view their project's material lists"
+  on material_lists for select
+  to authenticated
+  using (is_project_member(project_id) or current_user_is_admin());
+
+create policy "invited shop owners can view lists shared with them"
+  on material_lists for select
+  to authenticated
+  using (
+    exists (
+      select 1 from material_list_shop_invites
+      where material_list_id = material_lists.id and shop_owner_id = auth.uid()
+    )
+  );
+
+create policy "project members can create material lists"
+  on material_lists for insert
+  to authenticated
+  with check (created_by = auth.uid() and is_project_member(project_id));
+
+create policy "creator can update their own draft material list"
+  on material_lists for update
+  to authenticated
+  using (created_by = auth.uid() and is_project_member(project_id))
+  with check (created_by = auth.uid());
+
+-- The real lock enforcement - a finalized list cannot be edited again by
+-- anyone, including its own creator, regardless of what the UI shows.
+-- Only the specific draft->finalized transition is allowed through.
+create or replace function enforce_material_list_lock()
+returns trigger as $$
+begin
+  if old.status = 'finalized' then
+    raise exception 'This material list is finalized and permanently locked. Create a new list for any change.';
+  end if;
+  new.updated_at := now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists enforce_material_list_lock_trigger on material_lists;
+create trigger enforce_material_list_lock_trigger
+  before update on material_lists
+  for each row execute function enforce_material_list_lock();
+
+-- ----------------------------------------------------------------------------
+-- Shop invites - the list creator explicitly shares a FINALIZED list with
+-- a specific shop owner, found the same way a project member is found -
+-- by their real ADRITH account email, reusing find_user_by_email rather
+-- than inventing a second lookup mechanism.
+-- ----------------------------------------------------------------------------
+create table if not exists material_list_shop_invites (
+  id uuid primary key default gen_random_uuid(),
+  material_list_id uuid not null references material_lists (id) on delete cascade,
+  shop_owner_id uuid not null references profiles (id),
+  invited_by uuid not null references profiles (id),
+  created_at timestamptz not null default now(),
+  unique (material_list_id, shop_owner_id)
+);
+
+alter table material_list_shop_invites enable row level security;
+
+drop policy if exists "project members can view invites on their lists" on material_list_shop_invites;
+drop policy if exists "shop owners can view their own invites" on material_list_shop_invites;
+drop policy if exists "list creator can invite shop owners to a finalized list" on material_list_shop_invites;
+
+create policy "project members can view invites on their lists"
+  on material_list_shop_invites for select
+  to authenticated
+  using (
+    exists (
+      select 1 from material_lists ml
+      where ml.id = material_list_id and is_project_member(ml.project_id)
+    )
+  );
+
+create policy "shop owners can view their own invites"
+  on material_list_shop_invites for select
+  to authenticated
+  using (shop_owner_id = auth.uid());
+
+create policy "list creator can invite shop owners to a finalized list"
+  on material_list_shop_invites for insert
+  to authenticated
+  with check (
+    invited_by = auth.uid()
+    and exists (
+      select 1 from material_lists ml
+      where ml.id = material_list_id and ml.created_by = auth.uid() and ml.status = 'finalized'
+    )
+  );
+
+-- ----------------------------------------------------------------------------
+-- Quotations - a shop owner's own real quote against a list. Immutable
+-- once submitted, same principle as sign_offs and checkpoint_evidence - a
+-- real record of what was quoted and when, not something edited in
+-- place. A revised quote is a new row, not an edit to the old one.
+-- ----------------------------------------------------------------------------
+create table if not exists material_list_quotations (
+  id uuid primary key default gen_random_uuid(),
+  material_list_id uuid not null references material_lists (id) on delete cascade,
+  shop_owner_id uuid not null references profiles (id),
+  quote_details text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table material_list_quotations enable row level security;
+
+drop policy if exists "project members can view quotations on their lists" on material_list_quotations;
+drop policy if exists "a shop owner can view their own submitted quotations" on material_list_quotations;
+drop policy if exists "invited shop owners can submit a quotation" on material_list_quotations;
+
+create policy "project members can view quotations on their lists"
+  on material_list_quotations for select
+  to authenticated
+  using (
+    exists (
+      select 1 from material_lists ml
+      where ml.id = material_list_id and is_project_member(ml.project_id)
+    )
+  );
+
+create policy "a shop owner can view their own submitted quotations"
+  on material_list_quotations for select
+  to authenticated
+  using (shop_owner_id = auth.uid());
+
+create policy "invited shop owners can submit a quotation"
+  on material_list_quotations for insert
+  to authenticated
+  with check (
+    shop_owner_id = auth.uid()
+    and exists (
+      select 1 from material_list_shop_invites
+      where material_list_id = material_list_quotations.material_list_id and shop_owner_id = auth.uid()
+    )
+  );
+
+-- ----------------------------------------------------------------------------
+-- Storage for source photos/plans, scoped by project like quantity-calc-files.
+-- ----------------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('material-list-files', 'material-list-files', false)
+on conflict (id) do nothing;
+
+drop policy if exists "members can view their project's material list files" on storage.objects;
+drop policy if exists "members can upload material list files for their projects" on storage.objects;
+
+create policy "members can view their project's material list files"
+  on storage.objects for select
+  to authenticated
+  using (
+    bucket_id = 'material-list-files'
+    and (is_project_member((storage.foldername(name))[1]::uuid) or current_user_is_admin())
+  );
+
+create policy "members can upload material list files for their projects"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'material-list-files'
+    and is_project_member((storage.foldername(name))[1]::uuid)
+  );
+
+-- ----------------------------------------------------------------------------
+-- Rate limit on AI analysis calls - same advisory-locked pattern already
+-- proven for isometric_generations and Ask Vastu. Tracks analysis
+-- attempts (including clarifying-question round-trips), not finished
+-- lists, since each round-trip is its own AI call and its own real cost.
+-- ----------------------------------------------------------------------------
+create table if not exists material_analysis_attempts (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles (id),
+  created_at timestamptz not null default now()
+);
+
+alter table material_analysis_attempts enable row level security;
+
+drop policy if exists "users can view their own analysis attempts" on material_analysis_attempts;
+drop policy if exists "users can log their own analysis attempts" on material_analysis_attempts;
+
+create policy "users can view their own analysis attempts"
+  on material_analysis_attempts for select
+  to authenticated
+  using (user_id = auth.uid() or current_user_is_admin());
+
+create policy "users can log their own analysis attempts"
+  on material_analysis_attempts for insert
+  to authenticated
+  with check (user_id = auth.uid());
+
+create or replace function enforce_material_analysis_limit()
+returns trigger as $$
+declare
+  todays_count int;
+begin
+  perform pg_advisory_xact_lock(hashtext(new.user_id::text || ':material_analysis'));
+
+  select count(*) into todays_count
+  from material_analysis_attempts
+  where user_id = new.user_id
+    and created_at >= date_trunc('day', now());
+
+  if todays_count >= 20 then
+    raise exception 'Daily material analysis limit (20) already reached for today';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_material_analysis_limit_trigger on material_analysis_attempts;
+create trigger enforce_material_analysis_limit_trigger
+  before insert on material_analysis_attempts
+  for each row execute function enforce_material_analysis_limit();
 
 -- ============================================================================
 -- RCC QUANTITY CALCULATION — sits next to Civil & RCC Quality Control,

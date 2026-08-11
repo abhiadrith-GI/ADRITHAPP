@@ -19,12 +19,12 @@ export default async function PlumbingElectricalHubPage() {
         </Link>
         <h1 className="mt-3 text-xl font-semibold">Plumbing &amp; Electrical</h1>
         <p className="mt-1 text-sm text-[var(--adrith-dim-2)]">
-          Standard installation heights are open now. Material lists and
-          quotations are fully specified and still to come.
+          All four bases are open now — standard heights, and material
+          calculators for both trades, categorized room by room.
         </p>
 
         <p className="mt-8 mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--adrith-dim)]">
-          Open now
+          Standard heights
         </p>
         <div className="flex flex-col gap-2.5">
           <Link
@@ -48,33 +48,32 @@ export default async function PlumbingElectricalHubPage() {
         </div>
 
         <p className="mt-8 mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--adrith-dim)]">
-          Specified, not yet open
+          Material calculators
         </p>
         <div className="flex flex-col gap-2.5">
-          <div className="rounded-xl border border-white/10 bg-[var(--adrith-card)]/50 p-4">
-            <p className="text-sm font-semibold text-[var(--adrith-dim-2)]">
-              Plumbing Material Calculator
-            </p>
+          <Link
+            href="/dashboard/plumbing-electrical/plumbing-materials"
+            className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4"
+          >
+            <p className="text-sm font-semibold">Plumbing Material Calculator</p>
             <p className="mt-1 text-xs text-[var(--adrith-dim-2)]">
-              A real material specification list — pipe sizes, fixture counts,
-              fittings — for procurement and shop quotations. Fully designed:
-              no rates ever, editable until you finalize it, then permanently
-              locked. Waiting on its own dedicated research pass before any
-              number in it can be trusted, the same standard the heights
-              above already got.
+              Upload a photo, plan, or description of a wet room — get a
+              real material list, no rates, editable until you finalize it.
             </p>
-          </div>
-          <div className="rounded-xl border border-white/10 bg-[var(--adrith-card)]/50 p-4">
-            <p className="text-sm font-semibold text-[var(--adrith-dim-2)]">
-              Electrical Material Calculator
-            </p>
+          </Link>
+          <Link
+            href="/dashboard/plumbing-electrical/electrical-materials"
+            className="rounded-xl border border-white/20 bg-[var(--adrith-card)] p-4"
+          >
+            <p className="text-sm font-semibold">Electrical Material Calculator</p>
             <p className="mt-1 text-xs text-[var(--adrith-dim-2)]">
-              Same principle, extended to wires, switches, and lighting.
-              Also waiting on that same dedicated research pass.
+              Same principle, every room — wires, points, and fittings by
+              what each space actually needs.
             </p>
-          </div>
+          </Link>
         </div>
       </div>
     </main>
   );
 }
+
