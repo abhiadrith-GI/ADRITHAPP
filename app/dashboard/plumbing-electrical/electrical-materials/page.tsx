@@ -24,7 +24,15 @@ export default async function ElectricalMaterialsProjectPickerPage() {
           ← Plumbing &amp; Electrical
         </Link>
         <h1 className="mb-1 mt-3 text-lg font-bold">Electrical Material Calculator</h1>
-        <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">Pick a project to start.</p>
+        <div className="mb-6 mt-2 flex items-center justify-between">
+          <p className="text-sm text-[var(--adrith-dim-2)]">Pick a project to start.</p>
+          <Link
+            href="/dashboard/plumbing-electrical/electrical-materials/new"
+            className="font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-rust)]"
+          >
+            + New Project
+          </Link>
+        </div>
 
         {projects && projects.length > 0 ? (
           <ul className="flex flex-col gap-2">
@@ -39,7 +47,7 @@ export default async function ElectricalMaterialsProjectPickerPage() {
           </ul>
         ) : (
           <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-[var(--adrith-dim-2)]">
-            No projects yet — start one from Civil &amp; RCC first.
+            No projects yet — start one above.
           </p>
         )}
       </div>

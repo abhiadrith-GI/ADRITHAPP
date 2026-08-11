@@ -49,9 +49,17 @@ export default async function QuantitiesHubPage() {
           Control.
         </p>
 
-        <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
-          Your Projects
-        </p>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
+            Your Projects
+          </p>
+          <Link
+            href="/dashboard/quantities/new"
+            className="font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-rust)]"
+          >
+            + New Project
+          </Link>
+        </div>
         {projects && projects.length > 0 ? (
           <ul className="flex flex-col gap-2">
             {(projects as Pick<Project, "id" | "name" | "location">[]).map((p) => (
@@ -70,7 +78,7 @@ export default async function QuantitiesHubPage() {
           </ul>
         ) : (
           <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-[var(--adrith-dim-2)]">
-            No projects yet — start one from Civil &amp; RCC first.
+            No projects yet — start one above.
           </p>
         )}
       </div>
