@@ -1203,6 +1203,44 @@ drop policy "project members can sign off as themselves" on sign_offs;
 -- quotations carry a shop owner's own submitted price as free text,
 -- which ADRITH stores and displays but never calculates, checks, or is
 -- responsible for.
+--
+-- This section was rewritten once, in place, after the original version
+-- was found to have never actually reached the live database - the
+-- batch had been handed over earlier and set aside ("I will do that
+-- shortly"), and by the time it was finally run, it failed outright.
+-- Investigating why turned up two real, independent bugs in the
+-- original SQL, neither related to why it got set aside in the first
+-- place:
+--
+-- 1) An ordering bug: the "invited shop owners can view lists shared
+--    with them" policy on material_lists referenced
+--    material_list_shop_invites before that table existed yet in
+--    statement order. CREATE POLICY validates table references at
+--    creation time, so this fails immediately on a fresh run - almost
+--    certainly the actual reason the batch failed when it was finally
+--    attempted. Fixed by moving material_list_shop_invites's table
+--    creation earlier; its own policies stay where they were, since
+--    those only need the material_lists TABLE (not any particular
+--    policy on it) to exist.
+--
+-- 2) A genuine circular RLS reference, only found by testing against
+--    real data rather than re-reading the SQL: that same "invited shop
+--    owners" policy reads material_list_shop_invites, whose own
+--    "project members can view invites on their lists" policy reads
+--    back into material_lists - a real mutual reference Postgres
+--    correctly refuses to evaluate ("infinite recursion detected in
+--    policy for relation material_lists"). Fixed with a small
+--    security-definer helper function, is_invited_shop_owner_for_list()
+--    - the same technique is_project_member() already uses everywhere
+--    else in this schema to safely cross an RLS boundary without
+--    triggering the other table's own policies.
+--
+-- Retested end to end after both fixes: DDL loads clean standalone, and
+-- a full functional lifecycle (create draft, finalize, invite a shop
+-- owner, submit a quotation, confirm an unrelated user and an uninvited
+-- shop owner see neither) passes against real rows, not just empty
+-- tables - the recursion specifically only surfaces once real data
+-- makes the policies actually evaluate against each other.
 -- ============================================================================
 create table if not exists material_lists (
   id uuid primary key default gen_random_uuid(),
@@ -1228,6 +1266,37 @@ create table if not exists material_lists (
 
 alter table material_lists enable row level security;
 
+-- Moved up from later in the original section - has to exist before the
+-- "invited shop owners can view lists shared with them" policy below,
+-- which references it. See header note.
+create table if not exists material_list_shop_invites (
+  id uuid primary key default gen_random_uuid(),
+  material_list_id uuid not null references material_lists (id) on delete cascade,
+  shop_owner_id uuid not null references profiles (id),
+  invited_by uuid not null references profiles (id),
+  created_at timestamptz not null default now(),
+  unique (material_list_id, shop_owner_id)
+);
+
+alter table material_list_shop_invites enable row level security;
+
+-- Breaks a real circular RLS reference: this policy needs to check
+-- material_list_shop_invites, whose own "project members can view
+-- invites" policy reads back into material_lists - a genuine mutual
+-- reference Postgres correctly refuses to evaluate ("infinite recursion
+-- detected in policy for relation material_lists"), caught only by
+-- actually running a real query against real data, not by reading the
+-- SQL. A security-definer helper (same trick is_project_member() already
+-- uses everywhere else in this schema) bypasses RLS on the table it
+-- reads internally, which is exactly what breaks the cycle.
+create or replace function is_invited_shop_owner_for_list(target_list_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from material_list_shop_invites
+    where material_list_id = target_list_id and shop_owner_id = auth.uid()
+  );
+$$ language sql security definer stable;
+
 drop policy if exists "project members can view their project's material lists" on material_lists;
 drop policy if exists "invited shop owners can view lists shared with them" on material_lists;
 drop policy if exists "project members can create material lists" on material_lists;
@@ -1241,12 +1310,7 @@ create policy "project members can view their project's material lists"
 create policy "invited shop owners can view lists shared with them"
   on material_lists for select
   to authenticated
-  using (
-    exists (
-      select 1 from material_list_shop_invites
-      where material_list_id = material_lists.id and shop_owner_id = auth.uid()
-    )
-  );
+  using (is_invited_shop_owner_for_list(id));
 
 create policy "project members can create material lists"
   on material_lists for insert
@@ -1282,19 +1346,9 @@ create trigger enforce_material_list_lock_trigger
 -- Shop invites - the list creator explicitly shares a FINALIZED list with
 -- a specific shop owner, found the same way a project member is found -
 -- by their real ADRITH account email, reusing find_user_by_email rather
--- than inventing a second lookup mechanism.
+-- than inventing a second lookup mechanism. (Table itself was moved up
+-- above material_lists's policies - just its own policies live here.)
 -- ----------------------------------------------------------------------------
-create table if not exists material_list_shop_invites (
-  id uuid primary key default gen_random_uuid(),
-  material_list_id uuid not null references material_lists (id) on delete cascade,
-  shop_owner_id uuid not null references profiles (id),
-  invited_by uuid not null references profiles (id),
-  created_at timestamptz not null default now(),
-  unique (material_list_id, shop_owner_id)
-);
-
-alter table material_list_shop_invites enable row level security;
-
 drop policy if exists "project members can view invites on their lists" on material_list_shop_invites;
 drop policy if exists "shop owners can view their own invites" on material_list_shop_invites;
 drop policy if exists "list creator can invite shop owners to a finalized list" on material_list_shop_invites;
@@ -1365,10 +1419,7 @@ create policy "invited shop owners can submit a quotation"
   to authenticated
   with check (
     shop_owner_id = auth.uid()
-    and exists (
-      select 1 from material_list_shop_invites
-      where material_list_id = material_list_quotations.material_list_id and shop_owner_id = auth.uid()
-    )
+    and is_invited_shop_owner_for_list(material_list_id)
   );
 
 -- ----------------------------------------------------------------------------
