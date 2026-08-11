@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/types/database";
 import { RingBackground } from "@/components/ring-background";
@@ -14,13 +14,18 @@ const ROLES: { value: UserRole; label: string }[] = [
   { value: "student", label: "Student" },
 ];
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const inviteId = searchParams.get("invite");
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("contractor");
   const [dateOfBirth, setDateOfBirth] = useState("");
+  const [firmChoice, setFirmChoice] = useState<"create" | "join" | null>(null);
+  const [firmName, setFirmName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -50,8 +55,24 @@ export default function SignupPage() {
       return;
     }
 
+    if (!inviteId && firmChoice === "create" && !firmName.trim()) {
+      setError("Enter your firm's name.");
+      return;
+    }
+
+    if (!inviteId && firmChoice === null) {
+      setError("Choose whether you're starting a new firm or joining one you were invited to.");
+      return;
+    }
+
     setLoading(true);
     const supabase = createClient();
+
+    const firmMeta = inviteId
+      ? { firm_action: "join", invite_id: inviteId }
+      : firmChoice === "create"
+        ? { firm_action: "create", firm_name: firmName.trim() }
+        : {};
 
     const { error: signUpError } = await supabase.auth.signUp({
       email,
@@ -61,6 +82,7 @@ export default function SignupPage() {
           full_name: fullName,
           role,
           ...(role === "student" ? { date_of_birth: dateOfBirth } : {}),
+          ...firmMeta,
         },
       },
     });
@@ -168,6 +190,62 @@ export default function SignupPage() {
             </div>
           )}
 
+          {inviteId ? (
+            <div className="rounded-md border border-neutral-300 bg-neutral-50 px-3 py-2 text-sm text-neutral-700">
+              You&apos;re joining a firm via invite. This will be linked to
+              your account automatically once you sign up — if the invite
+              doesn&apos;t match this email, ask whoever sent it for a fresh
+              one.
+            </div>
+          ) : (
+            <div>
+              <span className="mb-1 block text-sm font-medium">Your firm</span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFirmChoice("create")}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    firmChoice === "create"
+                      ? "border-neutral-900 bg-neutral-900 text-white"
+                      : "border-neutral-300 text-neutral-700"
+                  }`}
+                >
+                  Start a new firm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFirmChoice("join")}
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    firmChoice === "join"
+                      ? "border-neutral-900 bg-neutral-900 text-white"
+                      : "border-neutral-300 text-neutral-700"
+                  }`}
+                >
+                  Join a firm
+                </button>
+              </div>
+
+              {firmChoice === "create" && (
+                <input
+                  type="text"
+                  required
+                  placeholder="Firm name"
+                  value={firmName}
+                  onChange={(e) => setFirmName(e.target.value)}
+                  className="mt-2 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                />
+              )}
+
+              {firmChoice === "join" && (
+                <p className="mt-2 text-xs text-neutral-500">
+                  You&apos;ll need an invite link from your firm&apos;s admin
+                  — ask them to send one from their Team page. Create your
+                  account after you have the link.
+                </p>
+              )}
+            </div>
+          )}
+
           {error && <p className="text-sm text-red-600">{error}</p>}
 
           <button
@@ -187,5 +265,13 @@ export default function SignupPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }

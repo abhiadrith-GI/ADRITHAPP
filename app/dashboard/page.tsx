@@ -98,7 +98,14 @@ export default async function DashboardPage() {
           <AdrithLogo className="h-6 w-6" />
           <span className="text-sm font-bold tracking-[0.2em]">ADRITH</span>
         </div>
-        <LogoutButton />
+        <div className="flex items-center gap-3">
+          {profile?.role !== "shop_owner" && (
+            <Link href="/dashboard/firm" className="text-xs text-[var(--adrith-dim-2)]">
+              Firm
+            </Link>
+          )}
+          <LogoutButton />
+        </div>
       </div>
 
       <p className="relative z-10 mx-auto mt-1 max-w-md text-xs text-[var(--adrith-dim-2)]">
@@ -116,6 +123,14 @@ export default async function DashboardPage() {
               License not yet verified
             </span>
           )}
+        {profile?.role !== "shop_owner" && !profile?.firm_id && (
+          <Link
+            href="/dashboard/firm"
+            className="ml-2 rounded-full border border-[var(--adrith-rust)] px-2 py-0.5 text-[10px] text-[var(--adrith-rust)]"
+          >
+            Set up your firm →
+          </Link>
+        )}
       </p>
 
       <div className="relative z-10 mx-auto mt-6 max-w-md">

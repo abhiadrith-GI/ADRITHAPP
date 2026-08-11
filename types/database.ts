@@ -17,6 +17,26 @@ export interface Profile {
   license_number: string | null;
   license_verified: boolean;
   is_platform_admin: boolean;
+  /** Null for shop_owner accounts (deliberately firm-independent) or an account mid-onboarding with no firm chosen yet. */
+  firm_id: string | null;
+  is_firm_admin: boolean;
+  created_at: string;
+}
+
+export interface Firm {
+  id: string;
+  name: string;
+  created_by: string;
+  subscription_status: "pending" | "active" | "past_due" | "cancelled";
+  created_at: string;
+}
+
+export interface FirmInvite {
+  id: string;
+  firm_id: string;
+  invited_email: string;
+  invited_by: string;
+  status: "pending" | "accepted" | "revoked";
   created_at: string;
 }
 
@@ -115,6 +135,7 @@ export interface Project {
   name: string;
   location: string | null;
   created_by: string;
+  firm_id: string;
   created_at: string;
   fee_exempt: boolean;
   /** Null (or "layout") means the normal, default start — no request involved. */

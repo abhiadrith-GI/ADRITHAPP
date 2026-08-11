@@ -38,7 +38,7 @@ export default async function CivilRccPage() {
 
   const { data: yourProjects } = await supabase
     .from("projects")
-    .select("id, name, location, created_at, created_by, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
+    .select("id, name, location, created_at, created_by, firm_id, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
     .or(orFilter)
     .order("created_at", { ascending: false });
 
@@ -46,7 +46,7 @@ export default async function CivilRccPage() {
   if (profile?.is_platform_admin) {
     const { data } = await supabase
       .from("projects")
-      .select("id, name, location, created_at, created_by, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
+      .select("id, name, location, created_at, created_by, firm_id, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
       .order("created_at", { ascending: false });
     allProjects = data;
   }
