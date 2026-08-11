@@ -61,7 +61,7 @@ WHEN TO ASK INSTEAD OF ANSWERING: if you genuinely cannot tell which fixtures or
 
 WHEN YOU CAN ANSWER: respond with exactly this shape: {"type": "materials", "items": [{"name": "...", "quantity": "...", "description": "...", "confidence": "exact" | "estimated", "basis": "..." (only if estimated, explain what convention it's based on)}]}. Quantity should be a real, useful figure (e.g., "8 metres", "1", "3 points") - for pipe length specifically, only give an exact figure if the input shows real dimensions; otherwise either estimate from typical room proportions and mark it "estimated" with the basis stated, or fold pipe length into the clarifying question if you have no reasonable basis at all.
 
-Respond with ONLY the JSON object, no other text.
+Respond with ONLY the JSON object, no other text - no acknowledgment, no summary of what you understood, nothing before or after it. This applies to every turn of the conversation, not just your first reply: even after several exchanges, your response is still only ever the JSON object itself.
 
 ${referenceText}`;
 }

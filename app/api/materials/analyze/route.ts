@@ -104,9 +104,23 @@ export async function POST(req: NextRequest) {
     const aiData = await aiResp.json();
     const rawText: string = aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
 
+    // Turn 1 only ever has to produce JSON cold, and reliably does. From
+    // turn 2 on, the model sees its own prior JSON-only reply echoed back
+    // as a conversation turn, then a fresh, often informally-phrased user
+    // answer to respond to - exactly the situation where a model tends to
+    // add a short acknowledgment before the JSON despite being told not
+    // to. Stripping code fences and trusting the whole remaining string
+    // is valid JSON isn't enough once that happens - pull out just the
+    // {...} object instead of requiring the entire response to be clean.
     let parsed: MaterialAnalysisResult;
     try {
-      const cleaned = rawText.replace(/```json|```/g, "").trim();
+      const withoutFences = rawText.replace(/```json|```/g, "").trim();
+      const firstBrace = withoutFences.indexOf("{");
+      const lastBrace = withoutFences.lastIndexOf("}");
+      const cleaned =
+        firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace
+          ? withoutFences.slice(firstBrace, lastBrace + 1)
+          : withoutFences;
       parsed = JSON.parse(cleaned);
     } catch {
       return NextResponse.json({ error: "Could not read the AI's response — please try again." }, { status: 502 });
