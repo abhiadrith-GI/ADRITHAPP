@@ -73,24 +73,77 @@ export function MaterialCalculatorTool({
           conversationHistory: isAnswerToQuestion ? conversationHistory : undefined,
         }),
       });
-      const data = await res.json();
+
+      // Pre-flight failures (not logged in, rate limit already hit, no
+      // API key configured) still come back as a normal JSON error with
+      // a real status code - those are known before the AI call even
+      // starts, so there's nothing to stream yet.
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Something went wrong.");
         setLoading(false);
         return;
       }
-      if (data.type === "clarifying_question") {
-        setClarifyingQuestion(data.question);
-        setConversationHistory(data.conversationHistory);
-        setAnswer("");
-        setStep("clarifying");
-      } else {
-        setActiveListId(data.materialListId);
-        setActiveItems(data.items);
-        setActiveStatus("draft");
-        setClarifyingQuestion(null);
-        setStep("editing");
-        router.refresh();
+
+      if (!res.body) {
+        setError("Could not reach the server — check your connection.");
+        setLoading(false);
+        return;
+      }
+
+      // From here on the response is streamed: one JSON object per line,
+      // sent as the AI actually generates - a {"type":"progress"} line
+      // roughly every few seconds just to keep the connection alive
+      // during generation, and exactly one final {"type":"result",...}
+      // or {"type":"error",...} line once it's actually done.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let settled = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let evt: { type: string; error?: string; payload?: { type: string; question?: string; conversationHistory?: ConversationTurn[]; materialListId?: string; items?: MaterialItem[] } };
+          try {
+            evt = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (evt.type === "error") {
+            setError(evt.error ?? "Something went wrong.");
+            settled = true;
+          } else if (evt.type === "result" && evt.payload) {
+            if (evt.payload.type === "clarifying_question") {
+              setClarifyingQuestion(evt.payload.question ?? null);
+              setConversationHistory(evt.payload.conversationHistory ?? []);
+              setAnswer("");
+              setStep("clarifying");
+            } else {
+              setActiveListId(evt.payload.materialListId ?? null);
+              setActiveItems(evt.payload.items ?? []);
+              setActiveStatus("draft");
+              setClarifyingQuestion(null);
+              setStep("editing");
+              router.refresh();
+            }
+            settled = true;
+          }
+          // "progress" lines need no action - their only job is keeping
+          // the connection alive, which reading them here already does.
+        }
+      }
+
+      if (!settled) {
+        setError("The response ended unexpectedly — please try again.");
       }
     } catch {
       setError("Could not reach the server — check your connection.");

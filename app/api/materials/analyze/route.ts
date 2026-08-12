@@ -88,17 +88,15 @@ export async function POST(req: NextRequest) {
         model: "claude-sonnet-4-6",
         // Was 1500 - a genuinely thorough room (WC + wash basin + shower,
         // each with hot/cold supply and their own components) needs 20+
-        // material line items, which lands at or past that ceiling. Both
-        // real failures reported were exactly this kind of comprehensive,
-        // detailed request, not sparse ones - raised with real headroom
-        // rather than nudged up just past what broke.
+        // material line items, which lands at or past that ceiling.
         max_tokens: 4000,
         system: buildMaterialSystemPrompt(trade, roomType),
         messages: anthropicMessages,
+        stream: true,
       }),
     });
 
-    if (!aiResp.ok) {
+    if (!aiResp.ok || !aiResp.body) {
       let detail = "";
       try {
         const errBody = await aiResp.json();
@@ -107,100 +105,177 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` }, { status: 502 });
     }
 
-    const aiData = await aiResp.json();
-    const rawText: string = aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
+    // A non-streaming call sits silent on the connection for the AI's
+    // entire generation time before sending anything back. Once a
+    // genuinely thorough room started needing 20+ line items, that
+    // silence started landing past Netlify's function timeout (10s free
+    // / 26s paid) - the connection gets killed mid-request, which the
+    // browser reports as "Could not reach the server," not as an error
+    // response, because no response ever arrived to report. Streaming
+    // keeps bytes actively flowing the whole time instead, which is
+    // Netlify's own documented way to avoid exactly this.
+    //
+    // The heartbeat runs independently of Anthropic's own output pace -
+    // it's not just long generation that's a risk, a slow time-to-first-
+    // token before any content arrives at all would leave the same kind
+    // of silent gap otherwise.
+    const encoder = new TextEncoder();
+    const outStream = new ReadableStream({
+      async start(controller) {
+        function sendLine(obj: unknown) {
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        }
 
-    // A response cut off by the token ceiling is truncated mid-JSON and
-    // will never parse, no matter how the extraction below is written -
-    // this is what actually broke real, detailed submissions: a genuinely
-    // comprehensive room was landing right at the old 1500-token limit.
-    // Checking stop_reason directly, instead of only inferring truncation
-    // from a parse failure, means a precise, honest answer if this ever
-    // happens again even at the new ceiling, not another guessing round.
-    if (aiData.stop_reason === "max_tokens") {
-      console.error("[materials/analyze] hit max_tokens ceiling, response truncated", {
-        roomType,
-        trade,
-        isFirstTurn,
-        rawTextLength: rawText.length,
-      });
-      return NextResponse.json(
-        { error: "That request needs a longer response than expected — try fewer fixtures at once, or try again." },
-        { status: 502 }
-      );
-    }
+        const heartbeat = setInterval(() => sendLine({ type: "progress" }), 4000);
 
-    // Turn 1 only ever has to produce JSON cold, and reliably does. From
-    // turn 2 on, the model sees its own prior JSON-only reply echoed back
-    // as a conversation turn, then a fresh, often informally-phrased user
-    // answer to respond to - exactly the situation where a model tends to
-    // add a short acknowledgment before the JSON despite being told not
-    // to. Stripping code fences and trusting the whole remaining string
-    // is valid JSON isn't enough once that happens - pull out just the
-    // {...} object instead of requiring the entire response to be clean.
-    let parsed: MaterialAnalysisResult;
-    try {
-      const withoutFences = rawText.replace(/```json|```/g, "").trim();
-      const firstBrace = withoutFences.indexOf("{");
-      const lastBrace = withoutFences.lastIndexOf("}");
-      const cleaned =
-        firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace
-          ? withoutFences.slice(firstBrace, lastBrace + 1)
-          : withoutFences;
-      parsed = JSON.parse(cleaned);
-    } catch (parseErr) {
-      // However this happens next time, it should be visible in Netlify's
-      // function logs immediately rather than needing another screenshot
-      // and another round of speculation to track down.
-      console.error("[materials/analyze] JSON parse failed", {
-        roomType,
-        trade,
-        isFirstTurn,
-        stopReason: aiData.stop_reason,
-        rawTextLength: rawText.length,
-        rawTextSnippet: rawText.slice(0, 300),
-        parseErrorMessage: parseErr instanceof Error ? parseErr.message : String(parseErr),
-      });
-      return NextResponse.json({ error: "Could not read the AI's response — please try again." }, { status: 502 });
-    }
+        const reader = aiResp.body!.getReader();
+        const decoder = new TextDecoder();
+        let sseBuffer = "";
+        let accumulatedText = "";
+        let finalStopReason: string | null = null;
 
-    const newHistory: ConversationTurn[] = [...anthropicMessages.map((m) => ({ role: m.role as "user" | "assistant", content: typeof m.content === "string" ? m.content : "[image + text]" })), { role: "assistant", content: rawText }];
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            sseBuffer += decoder.decode(value, { stream: true });
 
-    if (parsed.type === "clarifying_question") {
-      return NextResponse.json({ type: "clarifying_question", question: parsed.question, conversationHistory: newHistory });
-    }
+            const lines = sseBuffer.split("\n");
+            sseBuffer = lines.pop() ?? "";
 
-    // A real materials answer - save it as a new draft list.
-    let sourceStoragePath: string | null = null;
-    if (imageBase64 && imageMediaType) {
-      const ext = imageMediaType === "image/png" ? "png" : "jpg";
-      const path = `${projectId}/${crypto.randomUUID()}.${ext}`;
-      const bytes = Buffer.from(imageBase64, "base64");
-      const { error: uploadError } = await supabase.storage.from("material-list-files").upload(path, bytes, { contentType: imageMediaType });
-      if (!uploadError) sourceStoragePath = path;
-    }
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const jsonStr = line.slice("data: ".length).trim();
+              if (!jsonStr) continue;
 
-    const { data: list, error: insertError } = await supabase
-      .from("material_lists")
-      .insert({
-        project_id: projectId,
-        created_by: user.id,
-        trade,
-        room_type: roomType,
-        items: parsed.items,
-        source_type: imageBase64 ? "photo" : description ? "description" : null,
-        source_storage_path: sourceStoragePath,
-        source_description: description ?? null,
-        status: "draft",
-      })
-      .select("id")
-      .single();
+              let evt: { type?: string; delta?: { type?: string; text?: string; stop_reason?: string } };
+              try {
+                evt = JSON.parse(jsonStr);
+              } catch {
+                continue; // malformed SSE framing shouldn't kill the whole stream
+              }
 
-    if (insertError || !list) {
-      return NextResponse.json({ error: "Got a materials list but could not save it." }, { status: 500 });
-    }
+              if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta" && evt.delta.text) {
+                accumulatedText += evt.delta.text;
+                sendLine({ type: "progress" });
+              } else if (evt.type === "message_delta" && evt.delta?.stop_reason) {
+                finalStopReason = evt.delta.stop_reason;
+              }
+            }
+          }
+        } catch (streamErr) {
+          clearInterval(heartbeat);
+          console.error("[materials/analyze] error reading AI stream", {
+            roomType,
+            trade,
+            isFirstTurn,
+            message: streamErr instanceof Error ? streamErr.message : String(streamErr),
+          });
+          sendLine({ type: "error", error: "Lost connection to the AI mid-response — please try again." });
+          controller.close();
+          return;
+        }
 
-    return NextResponse.json({ type: "materials", items: parsed.items, materialListId: list.id });
+        clearInterval(heartbeat);
+
+        // Same checks as before - a truncated response is still detected
+        // the same way, JSON is still extracted the same way. Only the
+        // fact that the text arrived progressively, and that the outcome
+        // is now the last line of the stream instead of the only
+        // response, has changed.
+        if (finalStopReason === "max_tokens") {
+          console.error("[materials/analyze] hit max_tokens ceiling, response truncated", {
+            roomType,
+            trade,
+            isFirstTurn,
+            rawTextLength: accumulatedText.length,
+          });
+          sendLine({ type: "error", error: "That request needs a longer response than expected — try fewer fixtures at once, or try again." });
+          controller.close();
+          return;
+        }
+
+        let parsed: MaterialAnalysisResult;
+        try {
+          const withoutFences = accumulatedText.replace(/```json|```/g, "").trim();
+          const firstBrace = withoutFences.indexOf("{");
+          const lastBrace = withoutFences.lastIndexOf("}");
+          const cleaned =
+            firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace
+              ? withoutFences.slice(firstBrace, lastBrace + 1)
+              : withoutFences;
+          parsed = JSON.parse(cleaned);
+        } catch (parseErr) {
+          console.error("[materials/analyze] JSON parse failed", {
+            roomType,
+            trade,
+            isFirstTurn,
+            stopReason: finalStopReason,
+            rawTextLength: accumulatedText.length,
+            rawTextSnippet: accumulatedText.slice(0, 300),
+            parseErrorMessage: parseErr instanceof Error ? parseErr.message : String(parseErr),
+          });
+          sendLine({ type: "error", error: "Could not read the AI's response — please try again." });
+          controller.close();
+          return;
+        }
+
+        const newHistory: ConversationTurn[] = [
+          ...anthropicMessages.map((m) => ({ role: m.role as "user" | "assistant", content: typeof m.content === "string" ? m.content : "[image + text]" })),
+          { role: "assistant", content: accumulatedText },
+        ];
+
+        if (parsed.type === "clarifying_question") {
+          sendLine({ type: "result", payload: { type: "clarifying_question", question: parsed.question, conversationHistory: newHistory } });
+          controller.close();
+          return;
+        }
+
+        // A real materials answer - save it as a new draft list.
+        let sourceStoragePath: string | null = null;
+        if (imageBase64 && imageMediaType) {
+          const ext = imageMediaType === "image/png" ? "png" : "jpg";
+          const path = `${projectId}/${crypto.randomUUID()}.${ext}`;
+          const bytes = Buffer.from(imageBase64, "base64");
+          const { error: uploadError } = await supabase.storage.from("material-list-files").upload(path, bytes, { contentType: imageMediaType });
+          if (!uploadError) sourceStoragePath = path;
+        }
+
+        const { data: list, error: insertError } = await supabase
+          .from("material_lists")
+          .insert({
+            project_id: projectId,
+            created_by: user.id,
+            trade,
+            room_type: roomType,
+            items: parsed.items,
+            source_type: imageBase64 ? "photo" : description ? "description" : null,
+            source_storage_path: sourceStoragePath,
+            source_description: description ?? null,
+            status: "draft",
+          })
+          .select("id")
+          .single();
+
+        if (insertError || !list) {
+          sendLine({ type: "error", error: "Got a materials list but could not save it." });
+          controller.close();
+          return;
+        }
+
+        sendLine({ type: "result", payload: { type: "materials", items: parsed.items, materialListId: list.id } });
+        controller.close();
+      },
+    });
+
+    return new Response(outStream, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Something went wrong." }, { status: 500 });
   }
