@@ -68,6 +68,7 @@ export default function NewProjectPage() {
         created_by: user.id,
         requested_start_stage_key: startsAtLayout ? null : startStageKey,
         requested_floor_count: existingFloorCount,
+        created_in_tool: "civil_rcc",
       })
       .select("id")
       .single();

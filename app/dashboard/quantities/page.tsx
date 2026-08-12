@@ -28,6 +28,7 @@ export default async function QuantitiesHubPage() {
     .from("projects")
     .select("id, name, location")
     .or(orFilter)
+    .or("created_in_tool.eq.quantities,created_in_tool.is.null")
     .order("created_at", { ascending: false });
 
   return (

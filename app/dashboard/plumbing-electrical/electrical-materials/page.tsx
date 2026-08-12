@@ -14,7 +14,12 @@ export default async function ElectricalMaterialsProjectPickerPage() {
   const memberProjectIds = (memberRows ?? []).map((r) => r.project_id);
   const orFilter = memberProjectIds.length > 0 ? `id.in.(${memberProjectIds.join(",")}),created_by.eq.${user.id}` : `created_by.eq.${user.id}`;
 
-  const { data: projects } = await supabase.from("projects").select("id, name, location").or(orFilter).order("created_at", { ascending: false });
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("id, name, location")
+    .or(orFilter)
+    .or("created_in_tool.eq.electrical_materials,created_in_tool.is.null")
+    .order("created_at", { ascending: false });
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">

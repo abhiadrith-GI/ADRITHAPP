@@ -38,15 +38,17 @@ export default async function CivilRccPage() {
 
   const { data: yourProjects } = await supabase
     .from("projects")
-    .select("id, name, location, created_at, created_by, firm_id, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
+    .select("id, name, location, created_at, created_by, firm_id, created_in_tool, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
     .or(orFilter)
+    .or("created_in_tool.eq.civil_rcc,created_in_tool.is.null")
     .order("created_at", { ascending: false });
 
   let allProjects: Project[] | null = null;
   if (profile?.is_platform_admin) {
     const { data } = await supabase
       .from("projects")
-      .select("id, name, location, created_at, created_by, firm_id, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
+      .select("id, name, location, created_at, created_by, firm_id, created_in_tool, fee_exempt, requested_start_stage_key, start_stage_pending, requested_floor_count")
+      .or("created_in_tool.eq.civil_rcc,created_in_tool.is.null")
       .order("created_at", { ascending: false });
     allProjects = data;
   }

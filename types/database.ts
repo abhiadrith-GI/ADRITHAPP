@@ -136,6 +136,8 @@ export interface Project {
   location: string | null;
   created_by: string;
   firm_id: string;
+  /** Null for projects created before tool-scoping existed - those stay visible in every tool they always were, by design. */
+  created_in_tool: string | null;
   created_at: string;
   fee_exempt: boolean;
   /** Null (or "layout") means the normal, default start — no request involved. */

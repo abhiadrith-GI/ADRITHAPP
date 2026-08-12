@@ -171,6 +171,7 @@ export default async function ProjectDetailPage({
             projectId={project.id}
             projectName={project.name}
             hasAnySignOff={hasAnySignOff}
+            redirectTo="/dashboard/civil-rcc"
           />
         )}
       </div>

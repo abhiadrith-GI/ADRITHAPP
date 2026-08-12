@@ -2289,3 +2289,33 @@ begin
 end $$;
 
 alter table projects alter column firm_id set not null;
+
+-- ============================================================================
+-- PATCH — tool-scoped project visibility.
+-- Run this once in the Supabase SQL Editor. Already folded into schema.sql.
+--
+-- Reverses the earlier "one shared project, every tool gets its own
+-- create button" decision - after actually using it, a project created
+-- in one tool (e.g. Civil & RCC) showing up in every other tool's list
+-- (Quantities, Plumbing Materials, Electrical Materials) turned out to
+-- be the wrong call in practice. Now: a project created in one tool is
+-- only ever listed in that same tool, in every direction, not just the
+-- three newer tools that previously lacked their own create button.
+--
+-- created_in_tool is deliberately just an application-level list filter,
+-- not a new RLS/security boundary - the existing membership-based RLS on
+-- projects is completely unchanged, still the real access control. This
+-- only changes which of the projects a user is ALREADY allowed to see
+-- get listed in which tool's picker.
+--
+-- Existing projects (created_in_tool left null) are grandfathered to
+-- keep showing up everywhere they already did - real client projects
+-- with real saved work (quantity calculations, material lists) should
+-- never suddenly vanish from a tool because of a rule made after the
+-- fact. Only new projects, created after this patch runs, are strictly
+-- confined to the one tool they were made in.
+--
+-- Safe to run against a live database: adds one nullable column, changes
+-- no existing data, no RLS changes.
+-- ============================================================================
+alter table projects add column if not exists created_in_tool text;

@@ -14,10 +14,12 @@ export function DeleteProjectButton({
   projectId,
   projectName,
   hasAnySignOff,
+  redirectTo,
 }: {
   projectId: string;
   projectName: string;
   hasAnySignOff: boolean;
+  redirectTo: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -49,7 +51,7 @@ export function DeleteProjectButton({
       return;
     }
 
-    router.push("/dashboard/civil-rcc");
+    router.push(redirectTo);
   }
 
   if (!confirming) {

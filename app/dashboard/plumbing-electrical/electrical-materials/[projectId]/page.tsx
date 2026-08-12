@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { RingBackground } from "@/components/ring-background";
+import { DeleteProjectButton } from "@/components/delete-project-button";
 import { ELECTRICAL_ROOM_TYPES } from "@/lib/materials/electrical-reference";
 
 export default async function ElectricalMaterialsRoomPickerPage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -12,7 +13,7 @@ export default async function ElectricalMaterialsRoomPickerPage({ params }: { pa
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: project } = await supabase.from("projects").select("id, name").eq("id", projectId).single();
+  const { data: project } = await supabase.from("projects").select("id, name, created_by").eq("id", projectId).single();
   if (!project) notFound();
 
   const { data: lists } = await supabase
@@ -20,6 +21,9 @@ export default async function ElectricalMaterialsRoomPickerPage({ params }: { pa
     .select("room_type, status")
     .eq("project_id", projectId)
     .eq("trade", "electrical");
+
+  const { data: stages } = await supabase.from("checklist_stages").select("status").eq("project_id", projectId);
+  const hasAnySignOff = (stages ?? []).some((s) => s.status === "approved");
 
   const countFor = (room: string) => (lists ?? []).filter((l) => l.room_type === room).length;
 
@@ -50,6 +54,15 @@ export default async function ElectricalMaterialsRoomPickerPage({ params }: { pa
             );
           })}
         </div>
+
+        {project.created_by === user.id && (
+          <DeleteProjectButton
+            projectId={project.id}
+            projectName={project.name}
+            hasAnySignOff={hasAnySignOff}
+            redirectTo="/dashboard/plumbing-electrical/electrical-materials"
+          />
+        )}
       </div>
     </main>
   );

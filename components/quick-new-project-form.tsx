@@ -31,10 +31,12 @@ type AddedMember = { full_name: string; role_on_project: UserRole; is_project_de
  * Civil & RCC if this project ever gets used there too.
  */
 export function QuickNewProjectForm({
+  toolKey,
   backHref,
   backLabel,
   continueBasePath,
 }: {
+  toolKey: string;
   backHref: string;
   backLabel: string;
   continueBasePath: string;
@@ -81,6 +83,7 @@ export function QuickNewProjectForm({
         created_by: user.id,
         requested_start_stage_key: null,
         requested_floor_count: 0,
+        created_in_tool: toolKey,
       })
       .select("id")
       .single();
