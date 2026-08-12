@@ -86,7 +86,13 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1500,
+        // Was 1500 - a genuinely thorough room (WC + wash basin + shower,
+        // each with hot/cold supply and their own components) needs 20+
+        // material line items, which lands at or past that ceiling. Both
+        // real failures reported were exactly this kind of comprehensive,
+        // detailed request, not sparse ones - raised with real headroom
+        // rather than nudged up just past what broke.
+        max_tokens: 4000,
         system: buildMaterialSystemPrompt(trade, roomType),
         messages: anthropicMessages,
       }),
@@ -103,6 +109,26 @@ export async function POST(req: NextRequest) {
 
     const aiData = await aiResp.json();
     const rawText: string = aiData.content?.find((b: { type: string }) => b.type === "text")?.text ?? "";
+
+    // A response cut off by the token ceiling is truncated mid-JSON and
+    // will never parse, no matter how the extraction below is written -
+    // this is what actually broke real, detailed submissions: a genuinely
+    // comprehensive room was landing right at the old 1500-token limit.
+    // Checking stop_reason directly, instead of only inferring truncation
+    // from a parse failure, means a precise, honest answer if this ever
+    // happens again even at the new ceiling, not another guessing round.
+    if (aiData.stop_reason === "max_tokens") {
+      console.error("[materials/analyze] hit max_tokens ceiling, response truncated", {
+        roomType,
+        trade,
+        isFirstTurn,
+        rawTextLength: rawText.length,
+      });
+      return NextResponse.json(
+        { error: "That request needs a longer response than expected — try fewer fixtures at once, or try again." },
+        { status: 502 }
+      );
+    }
 
     // Turn 1 only ever has to produce JSON cold, and reliably does. From
     // turn 2 on, the model sees its own prior JSON-only reply echoed back
@@ -122,7 +148,19 @@ export async function POST(req: NextRequest) {
           ? withoutFences.slice(firstBrace, lastBrace + 1)
           : withoutFences;
       parsed = JSON.parse(cleaned);
-    } catch {
+    } catch (parseErr) {
+      // However this happens next time, it should be visible in Netlify's
+      // function logs immediately rather than needing another screenshot
+      // and another round of speculation to track down.
+      console.error("[materials/analyze] JSON parse failed", {
+        roomType,
+        trade,
+        isFirstTurn,
+        stopReason: aiData.stop_reason,
+        rawTextLength: rawText.length,
+        rawTextSnippet: rawText.slice(0, 300),
+        parseErrorMessage: parseErr instanceof Error ? parseErr.message : String(parseErr),
+      });
       return NextResponse.json({ error: "Could not read the AI's response — please try again." }, { status: 502 });
     }
 
