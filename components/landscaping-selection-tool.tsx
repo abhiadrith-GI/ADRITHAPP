@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { RingBackground } from "@/components/ring-background";
-import { PLANT_ENTRIES } from "@/lib/landscaping/catalog-data";
+import { PLANT_ENTRIES, type PlantEntry } from "@/lib/landscaping/catalog-data";
 
 type SelectionItem = { name: string; qty: string };
 
@@ -42,6 +42,10 @@ export function LandscapingSelectionTool({
     if (!q) return [];
     return PLANT_ENTRIES.filter((p) => `${p.name} ${p.keywords}`.toLowerCase().includes(q)).slice(0, 8);
   }, [query]);
+
+  function findEntry(name: string): PlantEntry | undefined {
+    return PLANT_ENTRIES.find((p) => p.name === name);
+  }
 
   async function persistItems(newItems: SelectionItem[]) {
     setSaving(true);
@@ -169,8 +173,12 @@ export function LandscapingSelectionTool({
                     key={m.name}
                     type="button"
                     onClick={() => addItem(m.name)}
-                    className="block w-full px-3 py-2 text-left text-sm hover:bg-white/5"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-white/5"
                   >
+                    {m.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={m.imageUrl} alt="" className="h-8 w-8 shrink-0 rounded object-cover" />
+                    )}
                     {m.name}
                   </button>
                 ))}
@@ -185,31 +193,40 @@ export function LandscapingSelectionTool({
               Nothing added yet — search above.
             </p>
           ) : (
-            items.map((item) => (
-              <div
-                key={item.name}
-                className="flex items-center justify-between rounded-lg border border-white/15 bg-[var(--adrith-card)] px-3 py-2"
-              >
-                <span className="text-sm">{item.name}</span>
-                <div className="flex items-center gap-2">
-                  {status !== "finalized" ? (
-                    <>
-                      <input
-                        type="text"
-                        value={item.qty}
-                        onChange={(e) => updateQty(item.name, e.target.value)}
-                        className="w-16 rounded border border-white/20 bg-transparent px-2 py-1 text-center text-xs"
-                      />
-                      <button type="button" onClick={() => removeItem(item.name)} className="text-xs text-red-400">
-                        Remove
-                      </button>
-                    </>
-                  ) : (
-                    <span className="text-xs text-[var(--adrith-dim-2)]">{item.qty}</span>
-                  )}
+            items.map((item) => {
+              const entry = findEntry(item.name);
+              return (
+                <div
+                  key={item.name}
+                  className="flex items-center justify-between rounded-lg border border-white/15 bg-[var(--adrith-card)] px-3 py-2"
+                >
+                  <div className="flex items-center gap-2">
+                    {entry?.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={entry.imageUrl} alt="" className="h-9 w-9 shrink-0 rounded object-cover" />
+                    )}
+                    <span className="text-sm">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {status !== "finalized" ? (
+                      <>
+                        <input
+                          type="text"
+                          value={item.qty}
+                          onChange={(e) => updateQty(item.name, e.target.value)}
+                          className="w-16 rounded border border-white/20 bg-transparent px-2 py-1 text-center text-xs"
+                        />
+                        <button type="button" onClick={() => removeItem(item.name)} className="text-xs text-red-400">
+                          Remove
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-[var(--adrith-dim-2)]">{item.qty}</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 

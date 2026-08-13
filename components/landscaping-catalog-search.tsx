@@ -58,27 +58,42 @@ export function LandscapingCatalogSearch() {
           </p>
           <div className="flex flex-col gap-1.5">
             {plants.map((p) => (
-              <div key={p.name} className="rounded-lg border border-white/15 bg-[var(--adrith-card)] px-3 py-2.5">
-                <button
-                  type="button"
-                  onClick={() => setOpenPlant(openPlant === p.name ? null : p.name)}
-                  className="flex w-full items-center justify-between text-left"
-                >
-                  <span className="text-sm font-medium">{p.name}</span>
-                  <span className="text-xs text-[var(--adrith-dim-2)]">{openPlant === p.name ? "−" : "+"}</span>
-                </button>
-                {openPlant === p.name && (
-                  <div className="mt-2 space-y-1 text-xs text-[var(--adrith-dim-2)]">
-                    <p>
-                      <span className="text-[var(--adrith-rust)]">Benefit: </span>
-                      {p.benefit}
-                    </p>
-                    <p>
-                      <span className="text-[var(--adrith-rust)]">Care: </span>
-                      {p.care}
-                    </p>
-                  </div>
+              <div key={p.name} className="overflow-hidden rounded-lg border border-white/15 bg-[var(--adrith-card)]">
+                {p.imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={p.imageUrl} alt={p.name} className="h-36 w-full object-cover" loading="lazy" />
                 )}
+                <div className="px-3 py-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setOpenPlant(openPlant === p.name ? null : p.name)}
+                    className="flex w-full items-center justify-between text-left"
+                  >
+                    <span className="text-sm font-medium">{p.name}</span>
+                    <span className="text-xs text-[var(--adrith-dim-2)]">{openPlant === p.name ? "−" : "+"}</span>
+                  </button>
+                  {openPlant === p.name && (
+                    <div className="mt-2 space-y-1 text-xs text-[var(--adrith-dim-2)]">
+                      <p>
+                        <span className="text-[var(--adrith-rust)]">Benefit: </span>
+                        {p.benefit}
+                      </p>
+                      <p>
+                        <span className="text-[var(--adrith-rust)]">Care: </span>
+                        {p.care}
+                      </p>
+                      {p.imageUrl && p.photographerName && (
+                        <p className="pt-1 text-[10px] text-[var(--adrith-dim-2)]/70">
+                          Photo by{" "}
+                          <a href={p.photographerUrl} target="_blank" rel="noopener noreferrer" className="underline">
+                            {p.photographerName}
+                          </a>{" "}
+                          on Pexels
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

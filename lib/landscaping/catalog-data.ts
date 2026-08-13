@@ -17,6 +17,10 @@ export type PlantEntry = {
   benefit: string;
   care: string;
   keywords: string;
+  /** Populated by scripts/fetch-catalog-images.mjs against the Pexels API - undefined until that's run. */
+  imageUrl?: string;
+  photographerName?: string;
+  photographerUrl?: string;
 };
 
 export const PLANT_ENTRIES: PlantEntry[] = [
@@ -88,6 +92,9 @@ export type GardenStyleEntry = {
   name: string;
   description: string;
   keywords: string;
+  imageUrl?: string;
+  photographerName?: string;
+  photographerUrl?: string;
 };
 
 export const GARDEN_STYLE_ENTRIES: GardenStyleEntry[] = [
