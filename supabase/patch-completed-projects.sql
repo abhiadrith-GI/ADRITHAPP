@@ -175,7 +175,7 @@ create policy "firm members can view their own firm's stored files"
     bucket_id = 'project-folder-files'
     and exists (
       select 1 from project_folders f
-      where f.id = (storage.foldername(name))[1]::uuid
+      where f.id = (storage.foldername(storage.objects.name))[1]::uuid
         and (f.firm_id = current_user_firm_id() or current_user_is_admin())
     )
   );
@@ -187,7 +187,7 @@ create policy "firm members can upload to their own firm's folders"
     bucket_id = 'project-folder-files'
     and exists (
       select 1 from project_folders f
-      where f.id = (storage.foldername(name))[1]::uuid and f.firm_id = current_user_firm_id()
+      where f.id = (storage.foldername(storage.objects.name))[1]::uuid and f.firm_id = current_user_firm_id()
     )
   );
 
@@ -198,6 +198,6 @@ create policy "firm members can delete their own firm's stored files"
     bucket_id = 'project-folder-files'
     and exists (
       select 1 from project_folders f
-      where f.id = (storage.foldername(name))[1]::uuid and f.firm_id = current_user_firm_id()
+      where f.id = (storage.foldername(storage.objects.name))[1]::uuid and f.firm_id = current_user_firm_id()
     )
   );
