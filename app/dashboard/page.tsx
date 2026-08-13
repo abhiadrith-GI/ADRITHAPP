@@ -65,10 +65,10 @@ const TOOLS: Tool[] = [
   },
   {
     name: "Completed Projects",
-    description: "Portfolio showcase, browsable by everyone",
+    description: "Drawings & site photos, organized by project",
     icon: "building",
     href: "/dashboard/completed-projects",
-    status: "soon",
+    status: "open",
   },
 ];
 
