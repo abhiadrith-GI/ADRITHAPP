@@ -57,11 +57,11 @@ const TOOLS: Tool[] = [
     status: "open",
   },
   {
-    name: "Color & Flooring",
-    description: "Palettes, finishes & flooring options",
-    icon: "paint",
-    href: "/dashboard/color-flooring",
-    status: "soon",
+    name: "Landscaping & Gardening",
+    description: "Plants, lawns & garden design, connect with a vendor",
+    icon: "leaf",
+    href: "/dashboard/landscaping-gardening",
+    status: "open",
   },
   {
     name: "Completed Projects",
