@@ -44,6 +44,11 @@ create table if not exists project_folders (
 
 alter table project_folders enable row level security;
 
+drop policy if exists "firm members can view their own firm's folders" on project_folders;
+drop policy if exists "firm members can create folders for their own firm" on project_folders;
+drop policy if exists "firm members can delete their own firm's folders" on project_folders;
+drop policy if exists "firm members can rename their own firm's folders" on project_folders;
+
 create policy "firm members can view their own firm's folders"
   on project_folders for select
   to authenticated
@@ -116,6 +121,10 @@ create table if not exists project_folder_files (
 
 alter table project_folder_files enable row level security;
 
+drop policy if exists "firm members can view files in their own firm's folders" on project_folder_files;
+drop policy if exists "firm members can upload files to their own firm's folders" on project_folder_files;
+drop policy if exists "firm members can delete files from their own firm's folders" on project_folder_files;
+
 create policy "firm members can view files in their own firm's folders"
   on project_folder_files for select
   to authenticated
@@ -154,6 +163,10 @@ create index if not exists idx_project_folders_firm_id on project_folders (firm_
 insert into storage.buckets (id, name, public)
 values ('project-folder-files', 'project-folder-files', false)
 on conflict (id) do nothing;
+
+drop policy if exists "firm members can view their own firm's stored files" on storage.objects;
+drop policy if exists "firm members can upload to their own firm's folders" on storage.objects;
+drop policy if exists "firm members can delete their own firm's stored files" on storage.objects;
 
 create policy "firm members can view their own firm's stored files"
   on storage.objects for select

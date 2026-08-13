@@ -144,6 +144,10 @@ create table if not exists landscaping_quotations (
 
 alter table landscaping_quotations enable row level security;
 
+drop policy if exists "project members can view quotations on their selections" on landscaping_quotations;
+drop policy if exists "a vendor can view their own submitted quotations" on landscaping_quotations;
+drop policy if exists "invited vendors can submit a quotation" on landscaping_quotations;
+
 create policy "project members can view quotations on their selections"
   on landscaping_quotations for select
   to authenticated
