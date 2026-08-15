@@ -1,15 +1,14 @@
 import Link from "next/link";
 import { AdrithLogo } from "@/components/adrith-logo";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 
 export default function Home() {
   return (
     <main className="relative flex min-h-screen flex-col items-center overflow-hidden px-6 py-16">
-      <RingBackground cyPercent={22} bright />
+      <PageBackground src="/backgrounds/login-landing.jpg" />
 
       <div className="relative z-10 mt-24 flex flex-1 flex-col items-center text-center">
-        <AdrithLogo className="h-20 w-20" />
-        <h1 className="mt-3 text-xl font-bold tracking-[0.3em]">ADRITH</h1>
+        <AdrithLogo variant="lockup" className="h-auto w-56" />
         <p className="mt-3 max-w-xs text-sm text-[var(--adrith-dim-2)]">
           The one platform to build your house.
         </p>

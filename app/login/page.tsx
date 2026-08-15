@@ -3,7 +3,8 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
+import { AdrithLogo } from "@/components/adrith-logo";
 
 function LoginForm() {
   const router = useRouter();
@@ -42,9 +43,13 @@ function LoginForm() {
 
   return (
     <main className="relative flex min-h-screen flex-col justify-center overflow-hidden px-6">
-      <RingBackground cyPercent={30} bright={false} />
+      <PageBackground src="/backgrounds/login-landing.jpg" />
 
       <div className="relative z-10 mx-auto w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-2">
+          <AdrithLogo className="h-6 w-auto" />
+          <span className="text-sm font-bold tracking-[0.2em]">ADRITH</span>
+        </div>
         <h1 className="mb-1 text-xl font-semibold">Log in to ADRITH</h1>
 
         {justSignedUp && (

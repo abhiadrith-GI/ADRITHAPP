@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
+import { AdrithLogo } from "@/components/adrith-logo";
 import { LandscapingCatalogSearch } from "@/components/landscaping-catalog-search";
 
 export default async function LandscapingGardeningPage() {
@@ -27,8 +28,12 @@ export default async function LandscapingGardeningPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/landscaping-gardening.jpg" />
       <div className="relative z-10 mx-auto max-w-md">
+        <div className="mb-5 flex items-center gap-2">
+          <AdrithLogo className="h-5 w-auto" />
+          <span className="text-xs font-bold tracking-[0.2em]">ADRITH</span>
+        </div>
         <Link href="/dashboard" className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← Dashboard
         </Link>

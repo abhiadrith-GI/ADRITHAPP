@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import LogoutButton from "./logout-button";
 import { AdrithLogo } from "@/components/adrith-logo";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { ToolIcon, type ToolIconName } from "@/components/tool-icons";
 
 type Tool = {
@@ -91,11 +91,11 @@ export default async function DashboardPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/login-landing.jpg" />
 
       <div className="relative z-10 mx-auto flex max-w-md items-center justify-between">
         <div className="flex items-center gap-2">
-          <AdrithLogo className="h-6 w-6" />
+          <AdrithLogo className="h-6 w-auto" />
           <span className="text-sm font-bold tracking-[0.2em]">ADRITH</span>
         </div>
         <div className="flex items-center gap-3">

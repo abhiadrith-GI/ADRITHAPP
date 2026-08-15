@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
+import { AdrithLogo } from "@/components/adrith-logo";
 
 export default async function IsometricViewHubPage() {
   const supabase = await createClient();
@@ -12,8 +13,12 @@ export default async function IsometricViewHubPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-[var(--adrith-off-white)]">
-      <RingBackground cyPercent={0} />
+      <PageBackground src="/backgrounds/isometric-view.jpg" />
       <div className="relative z-10 mx-auto max-w-md px-5 pb-16 pt-8">
+        <div className="mb-5 flex items-center gap-2">
+          <AdrithLogo className="h-5 w-auto" />
+          <span className="text-xs font-bold tracking-[0.2em]">ADRITH</span>
+        </div>
         <Link href="/dashboard" className="text-xs text-[var(--adrith-dim-2)]">
           ← Dashboard
         </Link>

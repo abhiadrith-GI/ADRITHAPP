@@ -1,32 +1,28 @@
 /**
- * The approved ADRITH mark: outer triangle, inner truss, five connection
- * nodes, rust apex. This exact SVG is the finalized design — do not modify
- * the geometry or colors without re-approving the change first.
+ * ADRITH brand mark. Replaces the previous minimal SVG truss mark with the
+ * new photoreal metallic A/skyscraper logo (approved 2026-08-15) - a real
+ * brand-direction change, not a tweak of the old geometry.
+ *
+ * Two source images because one raster lockup can't serve both jobs well:
+ * "icon" is a tight crop of just the A/skyscraper mark for small, square-ish
+ * nav-bar use; "lockup" is the full icon + wordmark + subtitle for hero use.
+ * Both are feather-edged PNGs (soft alpha falloff, no hard rectangle) so
+ * they sit cleanly on any of the page photo backgrounds.
  */
-export function AdrithLogo({ className = "h-16 w-16" }: { className?: string }) {
+export function AdrithLogo({
+  variant = "icon",
+  className = "h-16 w-16",
+}: {
+  variant?: "icon" | "lockup";
+  className?: string;
+}) {
+  const src = variant === "lockup" ? "/brand/adrith-lockup.png" : "/brand/adrith-icon.png";
   return (
-    <svg viewBox="0 0 200 200" className={className} aria-hidden="true">
-      <path
-        d="M 35 155 L 100 45 L 165 155 Z"
-        fill="none"
-        stroke="var(--adrith-dim)"
-        strokeWidth={7}
-        strokeLinejoin="round"
-      />
-      <path
-        d="M 67.5 100 L 132.5 100 L 100 155 Z"
-        fill="none"
-        stroke="var(--adrith-dim)"
-        strokeWidth={4}
-        strokeLinejoin="round"
-        opacity={0.75}
-      />
-      <circle cx={35} cy={155} r={6} fill="var(--adrith-off-white)" />
-      <circle cx={165} cy={155} r={6} fill="var(--adrith-off-white)" />
-      <circle cx={67.5} cy={100} r={5} fill="var(--adrith-off-white)" />
-      <circle cx={132.5} cy={100} r={5} fill="var(--adrith-off-white)" />
-      <circle cx={100} cy={155} r={5} fill="var(--adrith-off-white)" />
-      <polygon points="100,34 111,45 100,56 89,45" fill="var(--adrith-rust)" />
-    </svg>
+    <img
+      src={src}
+      alt="ADRITH Designs and Constructions"
+      className={`${className} object-contain`}
+    />
   );
 }
+

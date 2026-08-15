@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Project } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
+import { AdrithLogo } from "@/components/adrith-logo";
 
 /**
  * "Your Projects" vs "All Platform Projects" are deliberately two separate
@@ -55,9 +56,13 @@ export default async function CivilRccPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/civil-rcc.jpg" />
 
       <div className="relative z-10 mx-auto max-w-md">
+        <div className="mb-5 flex items-center gap-2">
+          <AdrithLogo className="h-5 w-auto" />
+          <span className="text-xs font-bold tracking-[0.2em]">ADRITH</span>
+        </div>
         <div className="mb-6 flex items-center justify-between">
           <Link href="/dashboard" className="font-mono text-xs text-[var(--adrith-dim-2)]">
             ← Tools
