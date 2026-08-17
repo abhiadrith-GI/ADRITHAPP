@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { ROOM_TYPES, ROOM_RULES } from "@/lib/vastu/rules";
 import { ZONE_NAMES, ZONE_THEME } from "@/lib/vastu/zones";
 import { GUIDANCE_SECTIONS } from "@/lib/vastu/guidance-content";
@@ -24,7 +24,7 @@ export default async function VastuLibraryPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-[var(--adrith-off-white)]">
-      <RingBackground cyPercent={0} />
+      <PageBackground src="/backgrounds/vastu.jpg" />
       <div className="relative z-10 mx-auto max-w-md px-5 pb-16 pt-8">
         <Link href="/dashboard/vastu" className="text-xs text-[var(--adrith-dim-2)]">
           ← Vastu Consultation

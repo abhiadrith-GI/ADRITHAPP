@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { Checkpoint, ChecklistStage, CheckpointEvidence, UserRole } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 
 type Props = {
   projectId: string;
@@ -115,7 +115,7 @@ export default function StageClient({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/civil-rcc.jpg" />
 
       <div className="relative z-10 mx-auto max-w-md">
         <Link

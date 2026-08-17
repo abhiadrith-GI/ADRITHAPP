@@ -7,6 +7,7 @@ export default function NewElectricalMaterialsProjectPage() {
       backHref="/dashboard/plumbing-electrical/electrical-materials"
       backLabel="Electrical Materials"
       continueBasePath="/dashboard/plumbing-electrical/electrical-materials"
+      backgroundSrc="/backgrounds/plumbing-electrical.jpg"
     />
   );
 }

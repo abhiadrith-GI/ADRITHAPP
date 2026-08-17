@@ -7,6 +7,7 @@ export default function NewQuantityProjectPage() {
       backHref="/dashboard/quantities"
       backLabel="Quantities"
       continueBasePath="/dashboard/quantities"
+      backgroundSrc="/backgrounds/quantities.jpg"
     />
   );
 }

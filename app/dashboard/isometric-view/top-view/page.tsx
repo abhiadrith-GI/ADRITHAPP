@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { TopViewTool } from "./top-view-tool";
 
 export default async function TopViewPage() {
@@ -18,7 +18,7 @@ export default async function TopViewPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-black text-[var(--adrith-off-white)]">
-      <RingBackground cyPercent={0} />
+      <PageBackground src="/backgrounds/isometric-view.jpg" />
       <div className="relative z-10 mx-auto max-w-md px-5 pb-16 pt-8">
         <Link href="/dashboard/isometric-view" className="text-xs text-[var(--adrith-dim-2)]">
           ← Isometric View

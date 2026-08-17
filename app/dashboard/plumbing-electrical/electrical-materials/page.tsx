@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 
 export default async function ElectricalMaterialsProjectPickerPage() {
   const supabase = await createClient();
@@ -23,7 +23,7 @@ export default async function ElectricalMaterialsProjectPickerPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/plumbing-electrical.jpg" />
       <div className="relative z-10 mx-auto max-w-md">
         <Link href="/dashboard/plumbing-electrical" className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← Plumbing &amp; Electrical

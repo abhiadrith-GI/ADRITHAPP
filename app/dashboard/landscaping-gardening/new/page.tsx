@@ -7,6 +7,7 @@ export default function NewLandscapingProjectPage() {
       backHref="/dashboard/landscaping-gardening"
       backLabel="Landscaping & Gardening"
       continueBasePath="/dashboard/landscaping-gardening"
+      backgroundSrc="/backgrounds/landscaping-gardening.jpg"
     />
   );
 }

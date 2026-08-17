@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 
 const ROLES: { value: UserRole; label: string }[] = [
   { value: "owner", label: "Owner" },
@@ -98,7 +98,7 @@ function SignupForm() {
 
   return (
     <main className="relative flex min-h-screen flex-col justify-center overflow-hidden px-6 py-10">
-      <RingBackground cyPercent={30} bright={false} />
+      <PageBackground src="/backgrounds/login-landing.jpg" />
 
       <div className="relative z-10 mx-auto w-full max-w-sm">
         <h1 className="mb-1 text-xl font-semibold">Create your ADRITH account</h1>

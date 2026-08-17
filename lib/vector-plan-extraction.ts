@@ -179,18 +179,41 @@ export function filterToWalls(segments: RawSegment[], minWallLength = 20): RawSe
   // Title block: find the densest low band of short segments near the
   // bottom edge (PDF's native y-axis runs bottom-to-top) - real title
   // blocks are always a compact table, not spread through the plan.
+  //
+  // Bug found and fixed against a real two-floor sheet: this used to cut
+  // by Y alone, across the *entire* page width. A sheet with the title
+  // block confined to a narrow edge column shares low Y-values with a
+  // second floor plan's lower rooms sitting elsewhere on the same page,
+  // and the old global cutoff silently dropped those real walls along
+  // with the actual title block. Title blocks are always anchored to a
+  // page edge (never the middle), so the cluster used to compute the
+  // cutoff is now additionally restricted to segments near bounds.minX
+  // or bounds.maxX - otherwise scattered short lines from the floor
+  // plans themselves (fixtures, hatching) widen the detected band right
+  // back out across the page and the fix does nothing.
+  const edgeMargin = (bounds.maxX - bounds.minX) * 0.25;
   const nearBottomShort = segments.filter((s) => {
     const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
-    return len < 150 && Math.min(s.y0, s.y1) < bounds.minY + (bounds.maxY - bounds.minY) * 0.15;
+    const lowY = Math.min(s.y0, s.y1) < bounds.minY + (bounds.maxY - bounds.minY) * 0.15;
+    const nearEdge = Math.max(s.x0, s.x1) < bounds.minX + edgeMargin || Math.min(s.x0, s.x1) > bounds.maxX - edgeMargin;
+    return len < 150 && lowY && nearEdge;
   });
-  const titleBlockMaxY =
-    nearBottomShort.length > 10 ? Math.max(...nearBottomShort.flatMap((s) => [s.y0, s.y1])) + 8 : bounds.minY;
+  let titleBlockMaxY = bounds.minY;
+  let titleBlockMinX = Infinity;
+  let titleBlockMaxX = -Infinity;
+  if (nearBottomShort.length > 10) {
+    titleBlockMaxY = Math.max(...nearBottomShort.flatMap((s) => [s.y0, s.y1])) + 8;
+    titleBlockMinX = Math.min(...nearBottomShort.flatMap((s) => [s.x0, s.x1])) - 10;
+    titleBlockMaxX = Math.max(...nearBottomShort.flatMap((s) => [s.x0, s.x1])) + 10;
+  }
 
   return segments.filter((s) => {
     const len = Math.hypot(s.x1 - s.x0, s.y1 - s.y0);
     if (len <= minWallLength) return false;
     if (isOuterBoundary(s)) return false;
-    if (Math.min(s.y0, s.y1) <= titleBlockMaxY) return false;
+    const inTitleBlockBand = Math.min(s.y0, s.y1) <= titleBlockMaxY;
+    const inTitleBlockX = Math.max(s.x0, s.x1) >= titleBlockMinX && Math.min(s.x0, s.x1) <= titleBlockMaxX;
+    if (inTitleBlockBand && inTitleBlockX) return false;
     return true;
   });
 }

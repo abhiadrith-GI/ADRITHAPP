@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { buildStartingStageOptions, type UserRole } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { AddMemberForm } from "@/components/add-member-form";
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -114,7 +114,7 @@ export default function NewProjectPage() {
   if (step === "team" && createdProjectId) {
     return (
       <main className="relative min-h-screen overflow-hidden px-4 py-8">
-        <RingBackground cyPercent={7} bright={false} />
+        <PageBackground src="/backgrounds/civil-rcc.jpg" />
 
         <div className="relative z-10 mx-auto max-w-md">
           <p className="font-mono text-xs text-[var(--adrith-dim-2)]">
@@ -176,7 +176,7 @@ export default function NewProjectPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/civil-rcc.jpg" />
 
       <div className="relative z-10 mx-auto max-w-md">
         <Link href="/dashboard/civil-rcc" className="font-mono text-xs text-[var(--adrith-dim-2)]">

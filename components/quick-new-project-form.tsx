@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import type { UserRole } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { AddMemberForm } from "@/components/add-member-form";
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
@@ -35,11 +35,13 @@ export function QuickNewProjectForm({
   backHref,
   backLabel,
   continueBasePath,
+  backgroundSrc,
 }: {
   toolKey: string;
   backHref: string;
   backLabel: string;
   continueBasePath: string;
+  backgroundSrc: string;
 }) {
   const router = useRouter();
   const supabase = createClient();
@@ -126,7 +128,7 @@ export function QuickNewProjectForm({
   if (step === "team" && createdProjectId) {
     return (
       <main className="relative min-h-screen overflow-hidden px-4 py-8">
-        <RingBackground cyPercent={7} bright={false} />
+        <PageBackground src={backgroundSrc} />
         <div className="relative z-10 mx-auto max-w-md">
           <p className="font-mono text-xs text-[var(--adrith-dim-2)]">{projectName} — created</p>
           <h1 className="mb-2 mt-3 text-lg font-bold">Add your team</h1>
@@ -182,7 +184,7 @@ export function QuickNewProjectForm({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src={backgroundSrc} />
       <div className="relative z-10 mx-auto max-w-md">
         <Link href={backHref} className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← {backLabel}

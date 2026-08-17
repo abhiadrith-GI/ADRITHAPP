@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { FolderFileSection } from "@/components/folder-file-section";
 
 export default async function FolderDetailPage({ params }: { params: Promise<{ folderId: string }> }) {
@@ -26,7 +26,7 @@ export default async function FolderDetailPage({ params }: { params: Promise<{ f
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/completed-projects.jpg" />
       <div className="relative z-10 mx-auto max-w-md">
         <Link href="/dashboard/completed-projects" className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← Completed Projects

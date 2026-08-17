@@ -7,6 +7,7 @@ export default function NewPlumbingMaterialsProjectPage() {
       backHref="/dashboard/plumbing-electrical/plumbing-materials"
       backLabel="Plumbing Materials"
       continueBasePath="/dashboard/plumbing-electrical/plumbing-materials"
+      backgroundSrc="/backgrounds/plumbing-electrical.jpg"
     />
   );
 }

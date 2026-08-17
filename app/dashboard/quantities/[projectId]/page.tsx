@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { floorLabel } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { FOUNDATION_GROUPS, FLOOR_GROUPS } from "@/lib/quantity/stage-config";
 
 export default async function QuantitiesProjectPage({
@@ -48,7 +48,7 @@ export default async function QuantitiesProjectPage({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/quantities.jpg" />
 
       <div className="relative z-10 mx-auto max-w-md">
         <Link href="/dashboard/quantities" className="font-mono text-xs text-[var(--adrith-dim-2)]">

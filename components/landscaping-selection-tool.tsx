@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { PLANT_ENTRIES, type PlantEntry } from "@/lib/landscaping/catalog-data";
 
 type SelectionItem = { name: string; qty: string };
@@ -144,7 +144,7 @@ export function LandscapingSelectionTool({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/landscaping-gardening.jpg" />
       <div className="relative z-10 mx-auto max-w-md">
         <Link href="/dashboard/landscaping-gardening" className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← Landscaping &amp; Gardening

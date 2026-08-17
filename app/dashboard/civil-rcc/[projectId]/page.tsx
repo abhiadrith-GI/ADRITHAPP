@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { buildStartingStageOptions, floorLabel, type ChecklistStage } from "@/types/database";
-import { RingBackground } from "@/components/ring-background";
+import { PageBackground } from "@/components/page-background";
 import { PendingStartBanner } from "@/components/pending-start-banner";
 import { AddMemberForm } from "@/components/add-member-form";
 import { AddNextFloorButton } from "@/components/add-next-floor-button";
@@ -88,7 +88,7 @@ export default async function ProjectDetailPage({
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <RingBackground cyPercent={7} bright={false} />
+      <PageBackground src="/backgrounds/civil-rcc.jpg" />
 
       <div className="relative z-10 mx-auto max-w-md">
         <Link href="/dashboard/civil-rcc" className="font-mono text-xs text-[var(--adrith-dim-2)]">
