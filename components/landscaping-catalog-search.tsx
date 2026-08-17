@@ -44,7 +44,7 @@ export function LandscapingCatalogSearch() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search plants, grass, garden styles…"
-        className="mb-4 w-full rounded-lg border border-white/20 bg-[var(--adrith-card)] px-3 py-2.5 text-sm outline-none"
+        className="mb-4 w-full rounded-lg border border-white/20 bg-[var(--adrith-card)] px-3 py-2.5 text-sm outline-none lg:max-w-md"
       />
 
       {grouped.length === 0 && filteredStyles.length === 0 && (
@@ -56,7 +56,7 @@ export function LandscapingCatalogSearch() {
           <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
             {CATEGORY_LABELS[category] ?? category}
           </p>
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {plants.map((p) => (
               <div key={p.name} className="overflow-hidden rounded-lg border border-white/15 bg-[var(--adrith-card)]">
                 {p.imageUrl && (
@@ -105,7 +105,7 @@ export function LandscapingCatalogSearch() {
           <p className="mb-2 font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim)]">
             Garden Styles
           </p>
-          <div className="flex flex-col gap-1.5">
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {filteredStyles.map((s) => (
               <div key={s.name} className="rounded-lg border border-white/15 bg-[var(--adrith-card)] px-3 py-2.5">
                 <p className="text-sm font-medium">{s.name}</p>

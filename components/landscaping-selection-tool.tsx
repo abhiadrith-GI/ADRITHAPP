@@ -145,7 +145,7 @@ export function LandscapingSelectionTool({
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
       <PageBackground src="/backgrounds/landscaping-gardening.jpg" />
-      <div className="relative z-10 mx-auto max-w-md">
+      <div className="relative z-10 mx-auto max-w-md lg:max-w-4xl">
         <Link href="/dashboard/landscaping-gardening" className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← Landscaping &amp; Gardening
         </Link>
@@ -158,7 +158,7 @@ export function LandscapingSelectionTool({
         )}
 
         {status !== "finalized" && (
-          <div className="relative mb-4">
+          <div className="relative mb-4 lg:max-w-md">
             <input
               type="text"
               value={query}
@@ -187,9 +187,9 @@ export function LandscapingSelectionTool({
           </div>
         )}
 
-        <div className="mb-6 flex flex-col gap-2">
+        <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {items.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-[var(--adrith-dim-2)]">
+            <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-[var(--adrith-dim-2)] sm:col-span-2 lg:col-span-3">
               Nothing added yet — search above.
             </p>
           ) : (

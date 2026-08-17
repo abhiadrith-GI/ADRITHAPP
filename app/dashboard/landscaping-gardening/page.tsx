@@ -29,7 +29,7 @@ export default async function LandscapingGardeningPage() {
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
       <PageBackground src="/backgrounds/landscaping-gardening.jpg" />
-      <div className="relative z-10 mx-auto max-w-md">
+      <div className="relative z-10 mx-auto max-w-md lg:max-w-6xl">
         <div className="mb-5 flex items-center gap-2">
           <AdrithLogo className="h-5 w-auto" />
           <span className="text-xs font-bold tracking-[0.2em]">ADRITH</span>
@@ -37,14 +37,16 @@ export default async function LandscapingGardeningPage() {
         <Link href="/dashboard" className="font-mono text-xs text-[var(--adrith-dim-2)]">
           ← Dashboard
         </Link>
-        <h1 className="mb-1 mt-3 text-lg font-bold">Landscaping &amp; Gardening</h1>
-        <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">
-          Browse plants, lawns &amp; garden styles below. Pick items for a project and connect with a real vendor to buy — same as the Material Calculators.
-        </p>
+        <div className="lg:max-w-2xl">
+          <h1 className="mb-1 mt-3 text-lg font-bold">Landscaping &amp; Gardening</h1>
+          <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">
+            Browse plants, lawns &amp; garden styles below. Pick items for a project and connect with a real vendor to buy — same as the Material Calculators.
+          </p>
+        </div>
 
         <a
           href="tel:+917259850990"
-          className="mb-6 block rounded-xl border border-[var(--adrith-rust)] bg-[var(--adrith-card)] px-4 py-3 text-center text-sm font-semibold text-[var(--adrith-rust)]"
+          className="mb-6 block rounded-xl border border-[var(--adrith-rust)] bg-[var(--adrith-card)] px-4 py-3 text-center text-sm font-semibold text-[var(--adrith-rust)] lg:max-w-2xl"
         >
           Design consultation — call +91 72598 50990
         </a>
@@ -65,7 +67,7 @@ export default async function LandscapingGardeningPage() {
           </div>
 
           {projects && projects.length > 0 ? (
-            <ul className="flex flex-col gap-2">
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {projects.map((p) => (
                 <li key={p.id}>
                   <Link
@@ -79,7 +81,7 @@ export default async function LandscapingGardeningPage() {
               ))}
             </ul>
           ) : (
-            <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-[var(--adrith-dim-2)]">
+            <p className="rounded-xl border border-dashed border-white/15 px-4 py-6 text-center text-sm text-[var(--adrith-dim-2)] lg:max-w-2xl">
               No projects yet — start one above to pick items and connect with a vendor.
             </p>
           )}
