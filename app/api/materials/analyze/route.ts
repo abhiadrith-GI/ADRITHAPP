@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildMaterialSystemPrompt } from "@/lib/materials/grounding";
+import { validateImageInput } from "@/lib/validate-image-input";
 import type { MaterialAnalysisResult } from "@/lib/materials/types";
 
 type ConversationTurn = { role: "user" | "assistant"; content: string };
@@ -32,6 +33,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const imageError = validateImageInput(imageBase64, imageMediaType);
+  if (imageError) {
+    return NextResponse.json({ error: imageError }, { status: 400 });
+  }
+
   const { data: membership } = await supabase
     .from("project_members")
     .select("user_id")
@@ -50,9 +56,13 @@ export async function POST(req: NextRequest) {
   // Log the attempt BEFORE the AI call - this is what the rate-limit
   // trigger checks, so a call that's about to fail the daily cap never
   // reaches the AI at all.
-  const { error: attemptError } = await supabase.from("material_analysis_attempts").insert({ user_id: user.id });
-  if (attemptError) {
-    const limitHit = attemptError.message?.includes("Daily material analysis limit");
+  const { data: attempt, error: attemptError } = await supabase
+    .from("material_analysis_attempts")
+    .insert({ user_id: user.id })
+    .select("id")
+    .single();
+  if (attemptError || !attempt) {
+    const limitHit = attemptError?.message?.includes("Daily material analysis limit");
     return NextResponse.json(
       { error: limitHit ? "Daily analysis limit reached — please try again tomorrow." : "Could not start analysis." },
       { status: limitHit ? 429 : 500 }
@@ -102,8 +112,17 @@ export async function POST(req: NextRequest) {
         const errBody = await aiResp.json();
         detail = errBody?.error?.message ?? "";
       } catch {}
+      await supabase.from("material_analysis_attempts").delete().eq("id", attempt.id);
       return NextResponse.json({ error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` }, { status: 502 });
     }
+
+    // The AI genuinely responded at this point - Anthropic accepted the
+    // request and is streaming content back, so this attempt is real and
+    // counts, regardless of what happens further downstream (truncation,
+    // a parse hiccup, a save failure). Only a failure to get a response
+    // at all releases the reservation - see the two spots above/below
+    // that delete instead of marking done.
+    await supabase.from("material_analysis_attempts").update({ status: "done" }).eq("id", attempt.id);
 
     // A non-streaming call sits silent on the connection for the AI's
     // entire generation time before sending anything back. Once a
@@ -277,6 +296,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
+    await supabase.from("material_analysis_attempts").delete().eq("id", attempt.id).eq("status", "pending");
     return NextResponse.json({ error: err instanceof Error ? err.message : "Something went wrong." }, { status: 500 });
   }
 }

@@ -232,7 +232,7 @@ create policy "only the project creator can add members"
 -- projects with no cap across them, they just have to be added to each
 -- one separately (membership is real, per-project data, not something
 -- that carries over automatically). Advisory-locked per project_id, same
--- pattern already proven for isometric_generations and the Ask Vastu
+-- pattern already proven for the Ask Vastu
 -- message limit - so two near-simultaneous adds on a project sitting at
 -- 3 members can't both slip through and land it at 5.
 create or replace function enforce_project_member_limit()
@@ -448,117 +448,6 @@ create table sign_offs (
   confirmation_text text not null,
   signed_at timestamptz not null default now()
 );
-
--- ----------------------------------------------------------------------------
--- ISOMETRIC VIEW TOOL
--- "top_view" (exact vector-PDF-only reproduction) is the only base the
--- app creates going forward - Furniture Layout was fully removed. The
--- check constraint below still permits the old "furniture_layout" value
--- deliberately, so historical rows from before its removal stay valid
--- rather than needing a data migration for a purely cosmetic cleanup.
--- Open to any logged-in user - no role restriction, unlike Civil & RCC.
--- ----------------------------------------------------------------------------
-create table if not exists isometric_generations (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references profiles (id),
-  base text not null check (base in ('top_view', 'furniture_layout')),
-  input_storage_path text not null,
-  output_storage_path text,
-  status text not null default 'pending'
-    check (status in ('pending', 'done', 'failed', 'rejected_not_vector')),
-  rejection_reason text,
-  created_at timestamptz not null default now()
-);
-
-alter table isometric_generations enable row level security;
-
-drop policy if exists "users can view their own generations" on isometric_generations;
-drop policy if exists "users can insert their own generations" on isometric_generations;
-drop policy if exists "users can complete their own pending generation" on isometric_generations;
-
-create policy "users can view their own generations"
-  on isometric_generations for select
-  to authenticated
-  using (user_id = auth.uid() or current_user_is_admin());
-
-create policy "users can insert their own generations"
-  on isometric_generations for insert
-  to authenticated
-  with check (user_id = auth.uid());
-
--- Required for the reservation flow: the study step inserts a pending
--- row immediately (reserving a real slot before the AI call), and the
--- final save step updates that same row to done. Restricted to a user's
--- own row, and only while it's still pending - once a generation is
--- done, this policy no longer matches it, so it can't be edited again.
-create policy "users can complete their own pending generation"
-  on isometric_generations for update
-  to authenticated
-  using (user_id = auth.uid() and status = 'pending')
-  with check (user_id = auth.uid());
-
--- Lets a reservation be released when the AI call itself genuinely
--- fails (a bad key, a bug, any system-side failure) - that isn't a real
--- use of the tool and shouldn't cost the person one of their 5 today.
--- Same restriction as completing one: only your own, only while still
--- pending - once a generation is actually done, it can't be deleted.
-drop policy if exists "users can release their own pending generation" on isometric_generations;
-create policy "users can release their own pending generation"
-  on isometric_generations for delete
-  to authenticated
-  using (user_id = auth.uid() and status = 'pending');
-
--- Rejected (not-a-genuine-vector-PDF) attempts don't count against the
--- daily limit - only real, processed generations do. A person mistakenly
--- uploading a scan shouldn't lose one of their 5 for that alone. Takes
--- which base to check, since Top View and Furniture Layout each track
--- their own separate 5-per-day allowance, not a shared one.
-create or replace function isometric_generations_remaining_today(target_user_id uuid, target_base text)
-returns int as $$
-  select greatest(0, 5 - count(*)::int)
-  from isometric_generations
-  where user_id = target_user_id
-    and base = target_base
-    and status != 'rejected_not_vector'
-    and created_at >= date_trunc('day', now());
-$$ language sql security definer stable;
-
-grant execute on function isometric_generations_remaining_today(uuid, text) to authenticated;
-
--- SECURITY FIX: the insert policy only ever checked user_id = auth.uid()
--- - nothing stopped a direct API call from inserting far more than 5 rows
--- a day, completely bypassing the client UI's disabled-button limit.
--- Confirmed exploitable directly: 10 rows inserted in a single statement
--- before this fix. Advisory-locked per (user_id, base) - the same
--- pattern already proven necessary for the checkpoint-evidence 2-photo
--- limit - so two simultaneous requests can't both slip past the count
--- check before either commits.
-create or replace function enforce_isometric_generation_limit()
-returns trigger as $$
-declare
-  todays_count int;
-begin
-  perform pg_advisory_xact_lock(hashtextextended(new.user_id::text || ':' || new.base, 0));
-
-  select count(*) into todays_count
-  from isometric_generations
-  where user_id = new.user_id
-    and base = new.base
-    and status != 'rejected_not_vector'
-    and created_at >= date_trunc('day', now());
-
-  if todays_count >= 5 then
-    raise exception 'Daily generation limit (5) already reached for this tool today';
-  end if;
-
-  return new;
-end;
-$$ language plpgsql security definer;
-
-drop trigger if exists enforce_isometric_generation_limit_trigger on isometric_generations;
-create trigger enforce_isometric_generation_limit_trigger
-  before insert on isometric_generations
-  for each row execute function enforce_isometric_generation_limit();
 
 alter table sign_offs enable row level security;
 
@@ -1118,9 +1007,9 @@ create trigger unlock_next_stage_on_signoff_trigger
 -- table, via the storage policies below, not a guessable public URL.
 -- Path convention: {project_id}/{checkpoint_id}/{uuid}.jpg
 -- ----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('checkpoint-evidence', 'checkpoint-evidence', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('checkpoint-evidence', 'checkpoint-evidence', false, 15728640)
+on conflict (id) do update set file_size_limit = 15728640;
 
 create policy "members can view evidence files of their projects"
   on storage.objects for select
@@ -1140,33 +1029,6 @@ create policy "members can upload evidence files to their projects"
 -- No update/delete policy here either — same immutability rule as the
 -- checkpoint_evidence table row that points at this file.
 
--- ----------------------------------------------------------------------------
--- Storage bucket for the Isometric View tool. Private, scoped per-user
--- (not per-project - this tool isn't tied to any specific project).
--- Path convention: {user_id}/{generation_id}/input.pdf and .../output.jpg
--- ----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('isometric-files', 'isometric-files', false)
-on conflict (id) do nothing;
-
-drop policy if exists "users can view their own isometric files" on storage.objects;
-drop policy if exists "users can upload their own isometric files" on storage.objects;
-
-create policy "users can view their own isometric files"
-  on storage.objects for select
-  to authenticated
-  using (
-    bucket_id = 'isometric-files'
-    and ((storage.foldername(name))[1]::uuid = auth.uid() or current_user_is_admin())
-  );
-
-create policy "users can upload their own isometric files"
-  on storage.objects for insert
-  to authenticated
-  with check (
-    bucket_id = 'isometric-files'
-    and (storage.foldername(name))[1]::uuid = auth.uid()
-  );
 
 -- ============================================================================
 -- FIX — sign-off was only restricted to the nominated designer in the app's
@@ -1425,9 +1287,9 @@ create policy "invited shop owners can submit a quotation"
 -- ----------------------------------------------------------------------------
 -- Storage for source photos/plans, scoped by project like quantity-calc-files.
 -- ----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('material-list-files', 'material-list-files', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('material-list-files', 'material-list-files', false, 15728640)
+on conflict (id) do update set file_size_limit = 15728640;
 
 drop policy if exists "members can view their project's material list files" on storage.objects;
 drop policy if exists "members can upload material list files for their projects" on storage.objects;
@@ -1450,13 +1312,14 @@ create policy "members can upload material list files for their projects"
 
 -- ----------------------------------------------------------------------------
 -- Rate limit on AI analysis calls - same advisory-locked pattern already
--- proven for isometric_generations and Ask Vastu. Tracks analysis
+-- proven for Ask Vastu. Tracks analysis
 -- attempts (including clarifying-question round-trips), not finished
 -- lists, since each round-trip is its own AI call and its own real cost.
 -- ----------------------------------------------------------------------------
 create table if not exists material_analysis_attempts (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles (id),
+  status text not null default 'pending' check (status in ('pending', 'done')),
   created_at timestamptz not null default now()
 );
 
@@ -1464,6 +1327,8 @@ alter table material_analysis_attempts enable row level security;
 
 drop policy if exists "users can view their own analysis attempts" on material_analysis_attempts;
 drop policy if exists "users can log their own analysis attempts" on material_analysis_attempts;
+drop policy if exists "users can complete their own pending analysis attempt" on material_analysis_attempts;
+drop policy if exists "users can release their own pending analysis attempt" on material_analysis_attempts;
 
 create policy "users can view their own analysis attempts"
   on material_analysis_attempts for select
@@ -1474,6 +1339,27 @@ create policy "users can log their own analysis attempts"
   on material_analysis_attempts for insert
   to authenticated
   with check (user_id = auth.uid());
+
+-- SECURITY FIX: this table only ever had select/insert - no way to mark a
+-- reservation done or release one that failed. Found while auditing after
+-- the Isometric View removal: unlike isometric_generations (which got this
+-- exact fix via a dedicated hardening patch), a failed AI call here
+-- permanently cost the person one of their 20 daily attempts, for
+-- something that was never their fault (a bad key, a network blip, an
+-- Anthropic-side error). Same pattern now applied here: reserve as
+-- 'pending' before the AI call, mark 'done' on success, delete (release)
+-- on failure - a row that's gone no longer counts, no status filtering
+-- needed in the limit check below.
+create policy "users can complete their own pending analysis attempt"
+  on material_analysis_attempts for update
+  to authenticated
+  using (user_id = auth.uid() and status = 'pending')
+  with check (user_id = auth.uid());
+
+create policy "users can release their own pending analysis attempt"
+  on material_analysis_attempts for delete
+  to authenticated
+  using (user_id = auth.uid() and status = 'pending');
 
 create or replace function enforce_material_analysis_limit()
 returns trigger as $$
@@ -1563,9 +1449,9 @@ create policy "members can insert quantity calculations on their projects"
 -- A wrong entry gets corrected by saving a new one, not editing the old
 -- one in place.
 
-insert into storage.buckets (id, name, public)
-values ('quantity-calc-files', 'quantity-calc-files', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('quantity-calc-files', 'quantity-calc-files', false, 15728640)
+on conflict (id) do update set file_size_limit = 15728640;
 
 drop policy if exists "members can view their project's quantity calc files" on storage.objects;
 drop policy if exists "members can upload quantity calc files for their projects" on storage.objects;
@@ -1667,8 +1553,8 @@ create policy "only the project's designer can update checkpoint status"
 
 -- ============================================================================
 -- Vastu Consultation - questionnaire path (first slice; PDF/photo input is
--- a deliberate later addition, not built yet). Deliberately simpler than
--- isometric_generations: this path is entirely deterministic, no AI call
+-- a deliberate later addition, not built yet). Deliberately simple: this
+-- path is entirely deterministic, no AI call
 -- anywhere in it, so there's no paid-API budget to protect and no
 -- reservation/pending-row dance needed. Just a plain record of what was
 -- answered and what the deterministic engine computed from it.
@@ -1765,11 +1651,11 @@ create policy "users can insert their own vastu chat messages"
 
 -- Rate limit: 40 USER messages/day (assistant replies don't count against
 -- this - only the ones that actually trigger a paid AI call do). 40 is
--- deliberately more generous than the 5/day on Isometric View, since a
+-- deliberately generous, since a
 -- single genuine back-and-forth conversation can easily run 6-10 messages
 -- on its own and this is a much lighter per-call cost, not because abuse
 -- matters less. Same advisory-lock pattern already proven for
--- checkpoint_evidence and isometric_generations, for the same reason -
+-- checkpoint_evidence, for the same reason -
 -- so two simultaneous requests can't both slip past the count check
 -- before either commits.
 create or replace function enforce_vastu_chat_message_limit()
@@ -1803,13 +1689,13 @@ create trigger enforce_vastu_chat_message_limit_trigger
   for each row execute function enforce_vastu_chat_message_limit();
 
 -- ----------------------------------------------------------------------------
--- Storage bucket for Ask Vastu photo uploads. Private, scoped per-user -
--- same pattern as isometric-files. Path convention:
+-- Storage bucket for Ask Vastu photo uploads. Private, scoped per-user.
+-- Path convention:
 -- {user_id}/{conversation_id}/{uuid}.jpg
 -- ----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('vastu-chat-files', 'vastu-chat-files', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('vastu-chat-files', 'vastu-chat-files', false, 15728640)
+on conflict (id) do update set file_size_limit = 15728640;
 
 drop policy if exists "users can view their own vastu chat files" on storage.objects;
 drop policy if exists "users can upload their own vastu chat files" on storage.objects;
@@ -2482,9 +2368,9 @@ create index if not exists idx_project_folders_firm_id on project_folders (firm_
 -- ----------------------------------------------------------------------------
 -- Storage
 -- ----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public)
-values ('project-folder-files', 'project-folder-files', false)
-on conflict (id) do nothing;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('project-folder-files', 'project-folder-files', false, 15728640)
+on conflict (id) do update set file_size_limit = 15728640;
 
 drop policy if exists "firm members can view their own firm's stored files" on storage.objects;
 drop policy if exists "firm members can upload to their own firm's folders" on storage.objects;

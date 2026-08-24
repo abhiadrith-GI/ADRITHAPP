@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildVastuSystemPrompt } from "@/lib/vastu/grounding";
+import { validateImageInput } from "@/lib/validate-image-input";
 
 // After this many user messages in one conversation, the UI shows a
 // persistent "talk to us directly" prompt regardless of what the AI itself
@@ -23,6 +24,11 @@ export async function POST(req: NextRequest) {
 
   if (!message || typeof message !== "string" || !message.trim()) {
     return NextResponse.json({ error: "A message is required." }, { status: 400 });
+  }
+
+  const imageError = validateImageInput(imageBase64, imageMediaType);
+  if (imageError) {
+    return NextResponse.json({ error: imageError }, { status: 400 });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;

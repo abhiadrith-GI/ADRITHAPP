@@ -252,7 +252,7 @@ create policy "members can upload material list files for their projects"
 
 -- ----------------------------------------------------------------------------
 -- Rate limit on AI analysis calls - same advisory-locked pattern already
--- proven for isometric_generations and Ask Vastu. Tracks analysis
+-- proven for Ask Vastu. Tracks analysis
 -- attempts (including clarifying-question round-trips), not finished
 -- lists, since each round-trip is its own AI call and its own real cost.
 -- ----------------------------------------------------------------------------
