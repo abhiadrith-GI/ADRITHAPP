@@ -14,20 +14,15 @@ type Tool = {
   status: "open" | "soon";
 };
 
-// Order and status as last confirmed. Civil & RCC, Isometric View, and
-// Vastu Consultation's direction checker now have real, working flows
-// behind them — everything else is fully specified but not yet built, and
-// says so honestly rather than pretending otherwise. Vastu's PDF/photo
-// input path is a deliberate next addition, not built yet — the
-// questionnaire path works standalone in the meantime.
+// Order and status as last confirmed. Civil & RCC and Vastu Consultation's
+// direction checker have real, working flows behind them — everything else
+// is fully specified but not yet built, and says so honestly rather than
+// pretending otherwise. Vastu's PDF/photo input path is a deliberate next
+// addition, not built yet — the questionnaire path works standalone in the
+// meantime. Isometric View removed 2026-08 - real-world extraction proved
+// unreliable on actual client CAD files; being replaced by a plot-size-in,
+// floor-plan-out generator (in discussion, not yet built).
 const TOOLS: Tool[] = [
-  {
-    name: "Isometric View",
-    description: "Exact top view from CAD, turned into a clear 3D view",
-    icon: "isometric",
-    href: "/dashboard/isometric-view",
-    status: "open",
-  },
   {
     name: "Vastu Consultation",
     description: "Direction & practical guidance",
