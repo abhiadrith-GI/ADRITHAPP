@@ -1,7 +1,6 @@
 export type ToolIconName =
   | "checklist"
   | "vastu"
-  | "isometric"
   | "droplet"
   | "paint"
   | "building"
@@ -33,13 +32,6 @@ export function ToolIcon({
         <svg viewBox="0 0 24 24" fill="none" stroke={line} strokeWidth={1.8} className={className}>
           <circle cx={12} cy={12} r={9} />
           <path d="M12 5 L14 12 L12 19 L10 12 Z" fill={rust} stroke="none" />
-        </svg>
-      );
-    case "isometric":
-      return (
-        <svg viewBox="0 0 24 24" fill="none" stroke={line} strokeWidth={1.5} className={className}>
-          <path d="M12 3 L20 7.5 L20 16.5 L12 21 L4 16.5 L4 7.5 Z" />
-          <path d="M12 3 L12 12 M12 12 L20 7.5 M12 12 L4 7.5" stroke={rust} strokeWidth={1.3} />
         </svg>
       );
     case "droplet":

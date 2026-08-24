@@ -458,37 +458,28 @@ and a platform admin has no override in that case either, confirmed
 directly rather than assumed. Tested against a copy of the real live
 database too, applied twice in a row, both clean.
 
-## Build session — Isometric View, the platform's second real tool
+## Build session — Isometric View removed
 
-Open to any logged-in user — no role restriction, unlike Civil & RCC.
+Real-world testing against an actual client CAD file (two floors, a
+genuine AutoCAD export) surfaced problems the earlier synthetic testing
+never would have: fragmented, sometimes disconnected wall geometry after
+extraction, on top of at least one confirmed extraction bug already fixed
+along the way. The Blender rendering side of the tool held up fine
+throughout — this was specifically an extraction-reliability problem, not
+a rendering one.
 
-**Actual Top View.** Accepts CAD-exported vector PDFs only. A scanned
-or flattened PDF is rejected outright, before any generation happens,
-with a message to export directly from AutoCAD instead. This isn't a
-soft preference — it's the one thing this tool exists to guarantee:
-the output is *exact*, nothing altered from the input.
+Removed entirely rather than left half-working: the dashboard tool card,
+both page routes, the three supporting lib files (vector extraction, plan
+assembly, canvas rendering), the two API routes, the `IsometricGeneration`
+type, and the `isometric` tool icon. On the database side, the
+`isometric_generations` table, its rate-limit function and trigger, and
+the `isometric-files` storage bucket are now gone from `schema.sql` for a
+from-scratch build; `patch-remove-isometric-view.sql` is the migration for
+the already-live database, since the earlier `patch-isometric-view-complete.sql`
+and its two follow-up hardening patches no longer apply to anything and were
+deleted rather than left as dead references to a feature that no longer
+exists.
 
-Getting that distinction right took real testing, not just reasoning
-about it: two actual PDFs were generated — one with genuine vector
-drawing operations, one a simulated scan (a flat image wrapped in a PDF
-shell) — and the detection logic was run against both directly. The
-result was clean and decisive: the real one showed genuine line/shape
-operations and extractable text; the scanned one showed neither, just
-one embedded image.
-
-The output itself is a direct, high-resolution rasterization of the
-original PDF page — deliberately *not* a reconstruction from the
-extracted lines and text. Reconstructing risks subtle differences
-creeping in; rendering the original page directly does not. That's what
-makes "exact" an honest claim here rather than an approximation.
-
-### Note — Anthropic API key rotated
-
-The original `ANTHROPIC_API_KEY` in Netlify was returning a genuine
-`401 invalid x-api-key` from Anthropic itself - confirmed directly once
-the error-surfacing fix (previous commit) actually showed the real
-reason instead of a generic message. Replaced with a fresh key, set to
-never expire since it lives only in Netlify's environment variables,
-never in code or the repo. This commit exists specifically to trigger a
-fresh build, since Netlify only picks up environment variable changes
-on the next deploy, not automatically.
+A plot-size-in, floor-plan-out generator is the discussed direction for
+this tool slot — not yet built into the app; prototyped and iterated on
+separately first.
