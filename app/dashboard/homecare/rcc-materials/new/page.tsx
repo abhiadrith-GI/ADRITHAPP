@@ -21,7 +21,7 @@ export default async function NewRccMaterialOrderPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
-      <PageBackground src="/backgrounds/civil-rcc.jpg" />
+      <PageBackground src="/backgrounds/homecare.jpg" />
       <div className="relative z-10 mx-auto max-w-md">
         <div className="mb-5 flex items-center gap-2">
           <AdrithLogo className="h-5 w-auto" />
