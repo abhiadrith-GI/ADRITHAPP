@@ -21,7 +21,11 @@ type Tool = {
 // addition, not built yet — the questionnaire path works standalone in the
 // meantime. Isometric View removed 2026-08 - real-world extraction proved
 // unreliable on actual client CAD files; being replaced by a plot-size-in,
-// floor-plan-out generator (in discussion, not yet built).
+// floor-plan-out generator (in discussion, not yet built). HomeCare added
+// 2026-08 - the first of its four planned bases (RCC Materials Supply) is
+// real and working; the other three (Finishing Material Supply,
+// Construction Labour Services, Finished House Services) are shown as
+// "soon" inside HomeCare's own hub, not listed as separate top-level tools.
 const TOOLS: Tool[] = [
   {
     name: "Vastu Consultation",
@@ -63,6 +67,13 @@ const TOOLS: Tool[] = [
     description: "Drawings & site photos, organized by project",
     icon: "building",
     href: "/dashboard/completed-projects",
+    status: "open",
+  },
+  {
+    name: "HomeCare",
+    description: "RCC materials supply now open; labour & finishing coming",
+    icon: "homecare",
+    href: "/dashboard/homecare",
     status: "open",
   },
 ];
