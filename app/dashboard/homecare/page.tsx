@@ -18,16 +18,10 @@ const BASES = [
     open: true,
   },
   {
-    name: "Construction Labour Services",
-    description: "Masons, carpenters, electricians, plumbers",
-    href: "#",
-    open: false,
-  },
-  {
     name: "Finished House Services",
-    description: "Maintenance & repairs after handover",
-    href: "#",
-    open: false,
+    description: "Plumbing, electrical, waterproofing, painting, masonry, carpentry, pest control, deep cleaning",
+    href: "/dashboard/homecare/finished-house-services",
+    open: true,
   },
 ];
 
