@@ -13,9 +13,9 @@ const BASES = [
   },
   {
     name: "Finishing Material Supply",
-    description: "Tiles, paint, sanitaryware, fittings",
-    href: "#",
-    open: false,
+    description: "Paints, doors & windows, glass, tiles, stainless steel, plumbing & electrical fixtures",
+    href: "/dashboard/homecare/finishing-materials",
+    open: true,
   },
   {
     name: "Construction Labour Services",
