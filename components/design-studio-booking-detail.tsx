@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 type Booking = {
   id: string;
   category: string;
+  details: Record<string, string>;
   description: string;
   status: string;
   admin_note: string | null;
@@ -31,6 +32,20 @@ const STATUS_LABELS: Record<string, string> = {
   in_progress: "In progress",
   delivered: "Delivered",
   cancelled: "Cancelled",
+};
+
+const DETAIL_LABELS: Record<string, string> = {
+  plot_width: "Plot width (ft)",
+  plot_depth: "Plot depth (ft)",
+  road_facing: "Road-facing direction",
+  floors: "Number of floors",
+  bhk: "BHK requirement",
+  vastu_required: "Vastu compliance needed",
+  has_plan: "Existing floor plan",
+  style_preference: "Style preference",
+  views_needed: "Views needed",
+  has_reference_plan: "Reference concept plan",
+  reference_design: "Reference design",
 };
 
 export function BookingDetail({
@@ -114,7 +129,17 @@ export function BookingDetail({
 
       <div className="rounded-xl border border-white/15 bg-[var(--adrith-card)] px-4 py-3">
         <p className="text-xs text-[var(--adrith-dim-2)]">{CATEGORY_LABELS[booking.category] ?? booking.category}</p>
-        <p className="mt-1 text-sm">{booking.description}</p>
+        {Object.keys(booking.details ?? {}).length > 0 && (
+          <div className="mt-2 flex flex-col gap-1">
+            {Object.entries(booking.details).map(([key, value]) => (
+              <div key={key} className="flex items-center justify-between text-xs">
+                <span className="text-[var(--adrith-dim-2)]">{DETAIL_LABELS[key] ?? key}</span>
+                <span>{value}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {booking.description && <p className="mt-2 border-t border-white/10 pt-2 text-sm">{booking.description}</p>}
         {booking.admin_note && <p className="mt-2 text-xs text-[var(--adrith-dim-2)]">{booking.admin_note}</p>}
       </div>
 

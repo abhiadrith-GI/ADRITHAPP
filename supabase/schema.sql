@@ -3108,6 +3108,12 @@ create table design_studio_bookings (
   category text not null check (
     category in ('concept_plan', 'three_d_designs', 'civil_execution_drawings', 'finishing_execution_drawings')
   ),
+  -- Category-specific structured fields (plot size, floors, style, etc. -
+  -- each category has a genuinely different field set, so this is JSONB
+  -- rather than a wide table of mostly-null columns). description stays
+  -- as a general free-text "anything else" note, no longer the only
+  -- thing collected at booking time.
+  details jsonb not null default '{}'::jsonb,
   description text not null,
   status text not null default 'booked' check (status in ('booked', 'in_progress', 'delivered', 'cancelled')),
   admin_note text,
