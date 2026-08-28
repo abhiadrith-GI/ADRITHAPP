@@ -22,10 +22,14 @@ type Tool = {
 // meantime. Isometric View removed 2026-08 - real-world extraction proved
 // unreliable on actual client CAD files; being replaced by a plot-size-in,
 // floor-plan-out generator (in discussion, not yet built). HomeCare added
-// 2026-08 - the first of its four planned bases (RCC Materials Supply) is
-// real and working; the other three (Finishing Material Supply,
-// Construction Labour Services, Finished House Services) are shown as
-// "soon" inside HomeCare's own hub, not listed as separate top-level tools.
+// 2026-08, all three bases now real and working (RCC Materials Supply,
+// Finishing Material Supply, Finished House Services) - Construction
+// Labour Services was dropped from the roadmap entirely, not deferred.
+// Adrith Design Studio added 2026-08 - a pure enquiry-and-delivery
+// platform (Concept Plan, 3D Designs, Civil Execution Drawings, Finishing
+// Execution Drawings); the app creates nothing here, Abhinandan/the team
+// does the real design work outside the app and uploads the finished
+// files. Pricing deliberately not modeled yet - pattern not decided.
 const TOOLS: Tool[] = [
   {
     name: "Vastu Consultation",
@@ -71,9 +75,16 @@ const TOOLS: Tool[] = [
   },
   {
     name: "HomeCare",
-    description: "RCC materials supply now open; labour & finishing coming",
+    description: "Materials supply & home services — RCC, finishing, maintenance",
     icon: "homecare",
     href: "/dashboard/homecare",
+    status: "open",
+  },
+  {
+    name: "Adrith Design Studio",
+    description: "Book a concept plan, 3D design, or execution drawings — we deliver, you download",
+    icon: "design_studio",
+    href: "/dashboard/design-studio",
     status: "open",
   },
 ];
