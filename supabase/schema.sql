@@ -2743,6 +2743,39 @@ create policy "only admin can adjust order item quantities"
 
 create index if not exists idx_rcc_material_orders_user_id on rcc_material_orders (user_id);
 create index if not exists idx_rcc_material_order_items_order_id on rcc_material_order_items (order_id);
+
+-- SECURITY FIX: the insert policy above only checks the order belongs to
+-- the user and is still 'placed' - it never verified that
+-- unit_customer_price/unit_vendor_payout/material_name/unit actually
+-- match the real catalog row for material_id. Found during a follow-up
+-- security review: a technical user could tamper with the client-side
+-- insert to submit an arbitrarily low price, and unless the admin
+-- manually cross-checked every line item's price during confirmation
+-- (confirmAsIs/confirmWithChanges only touch quantity_confirmed, never
+-- re-verify price), a manipulated order could reach payment at the
+-- wrong price. This trigger makes that impossible: it looks up the
+-- real, current catalog values by material_id and overwrites whatever
+-- the client sent, on every insert, no exceptions.
+create or replace function enforce_rcc_order_item_pricing()
+returns trigger as $$
+begin
+  select name, unit, customer_price, vendor_payout
+  into new.material_name, new.unit, new.unit_customer_price, new.unit_vendor_payout
+  from rcc_materials
+  where id = new.material_id;
+
+  if not found then
+    raise exception 'Material % does not exist or is no longer active', new.material_id;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_rcc_order_item_pricing_trigger on rcc_material_order_items;
+create trigger enforce_rcc_order_item_pricing_trigger
+  before insert on rcc_material_order_items
+  for each row execute function enforce_rcc_order_item_pricing();
 create index if not exists idx_rcc_materials_category on rcc_materials (category);
 
 -- ----------------------------------------------------------------------------
@@ -2924,6 +2957,30 @@ create policy "only admin can adjust finishing order item quantities"
 
 create index if not exists idx_finishing_material_orders_user_id on finishing_material_orders (user_id);
 create index if not exists idx_finishing_material_order_items_order_id on finishing_material_order_items (order_id);
+
+-- SECURITY FIX: same issue and same fix as rcc_material_order_items -
+-- see the comment there for the full explanation. This table has the
+-- identical gap since it was built from the same pattern.
+create or replace function enforce_finishing_order_item_pricing()
+returns trigger as $$
+begin
+  select name, unit, customer_price, vendor_payout
+  into new.material_name, new.unit, new.unit_customer_price, new.unit_vendor_payout
+  from finishing_materials
+  where id = new.material_id;
+
+  if not found then
+    raise exception 'Material % does not exist or is no longer active', new.material_id;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists enforce_finishing_order_item_pricing_trigger on finishing_material_order_items;
+create trigger enforce_finishing_order_item_pricing_trigger
+  before insert on finishing_material_order_items
+  for each row execute function enforce_finishing_order_item_pricing();
 create index if not exists idx_finishing_materials_category on finishing_materials (category);
 
 -- ----------------------------------------------------------------------------
@@ -3071,7 +3128,10 @@ create policy "users can view their own service requests"
 create policy "users can create their own service requests"
   on finished_house_service_requests for insert
   to authenticated
-  with check (user_id = auth.uid() and status = 'enquired');
+  with check (
+    user_id = auth.uid() and status = 'enquired'
+    and quoted_price is null and scheduled_date is null and admin_note is null and completion_report is null
+  );
 
 -- The one thing a customer can do without being admin: approve a quote,
 -- which both confirms the work and reveals payment - no separate steps.
@@ -3180,9 +3240,9 @@ create index if not exists idx_design_studio_deliverables_booking_id on design_s
 -- through the same booking-ownership check as the table itself, not a
 -- guessable public URL. Path convention: {booking_id}/{uuid}.{ext}
 -- ----------------------------------------------------------------------------
-insert into storage.buckets (id, name, public, file_size_limit)
-values ('design-studio-files', 'design-studio-files', false, 15728640)
-on conflict (id) do update set file_size_limit = 15728640;
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('design-studio-files', 'design-studio-files', false, 15728640, array['application/pdf', 'image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do update set file_size_limit = 15728640, allowed_mime_types = array['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
 
 drop policy if exists "booking owner or admin can view design studio files" on storage.objects;
 drop policy if exists "only admin can upload design studio files" on storage.objects;
