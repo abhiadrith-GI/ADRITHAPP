@@ -87,6 +87,13 @@ const TOOLS: Tool[] = [
     href: "/dashboard/design-studio",
     status: "open",
   },
+  {
+    name: "Trust Reports",
+    description: "Honest, plain-language progress updates for family checking in from anywhere",
+    icon: "trust_reports",
+    href: "/dashboard/trust-reports",
+    status: "open",
+  },
 ];
 
 export default async function DashboardPage() {

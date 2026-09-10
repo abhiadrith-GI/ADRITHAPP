@@ -7,7 +7,8 @@ export type ToolIconName =
   | "calculator"
   | "leaf"
   | "homecare"
-  | "design_studio";
+  | "design_studio"
+  | "trust_reports";
 
 /** The six approved tool icons from the finalized hub design. */
 export function ToolIcon({
@@ -94,6 +95,14 @@ export function ToolIcon({
           <rect x="4" y="4" width="16" height="16" rx="1" />
           <path d="M4 16l5-5 3 3 5-6" stroke={rust} strokeWidth={1.5} />
           <circle cx="8" cy="8" r="1.3" />
+        </svg>
+      );
+    case "trust_reports":
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke={line} strokeWidth={1.5} className={className}>
+          <path d="M6 3h9l4 4v14H6z" />
+          <path d="M15 3v4h4" />
+          <path d="M9 13l2 2 4-4.5" stroke={rust} strokeWidth={1.7} />
         </svg>
       );
   }
