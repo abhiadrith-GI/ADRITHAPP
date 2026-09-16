@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { PageBackground } from "@/components/page-background";
 import { FolderFileSection } from "@/components/folder-file-section";
+import { FolderShareLink } from "@/components/folder-share-link";
 
 export default async function FolderDetailPage({ params }: { params: Promise<{ folderId: string }> }) {
   const { folderId } = await params;
@@ -21,6 +22,14 @@ export default async function FolderDetailPage({ params }: { params: Promise<{ f
     .eq("folder_id", folderId)
     .order("created_at", { ascending: false });
 
+  const { data: shareLink } = await supabase
+    .from("public_share_links")
+    .select("token")
+    .eq("resource_type", "completed_project_folder")
+    .eq("resource_id", folderId)
+    .is("revoked_at", null)
+    .maybeSingle();
+
   const drawings = (files ?? []).filter((f) => f.category === "drawing");
   const sitePhotos = (files ?? []).filter((f) => f.category === "site_photo");
 
@@ -32,6 +41,8 @@ export default async function FolderDetailPage({ params }: { params: Promise<{ f
           ← Completed Projects
         </Link>
         <h1 className="mb-6 mt-3 text-lg font-bold">{folder.name}</h1>
+
+        <FolderShareLink folderId={folder.id} existingToken={shareLink?.token ?? null} />
 
         <FolderFileSection
           folderId={folder.id}

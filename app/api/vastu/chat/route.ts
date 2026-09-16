@@ -106,10 +106,13 @@ export async function POST(req: NextRequest) {
   const anthropicMessages = (history ?? []).map((m, i, arr) => {
     const isLastUserMessage = i === arr.length - 1 && m.role === "user";
     if (isLastUserMessage && imageBase64 && imageMediaType) {
+      const isPdf = imageMediaType === "application/pdf";
       return {
         role: "user",
         content: [
-          { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
+          isPdf
+            ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: imageBase64 } }
+            : { type: "image", source: { type: "base64", media_type: imageMediaType, data: imageBase64 } },
           { type: "text", text: m.content },
         ],
       };

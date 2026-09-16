@@ -97,8 +97,14 @@ export default async function ProjectDetailPage({
 
         <h1 className="mb-1 mt-3 text-lg font-bold">{project.name}</h1>
         {project.location && (
-          <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">{project.location}</p>
+          <p className="mb-3 text-sm text-[var(--adrith-dim-2)]">{project.location}</p>
         )}
+        <a
+          href={`/api/civil-rcc/report/${project.id}`}
+          className="mb-6 inline-block font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-rust)] underline"
+        >
+          Download PDF Report
+        </a>
 
         {project.start_stage_pending && (
           <PendingStartBanner

@@ -12,6 +12,7 @@ type PendingImage = {
   base64: string;
   mediaType: string;
   previewUrl: string;
+  isPdf: boolean;
 };
 
 function fileToBase64(file: File): Promise<{ base64: string; mediaType: string }> {
@@ -42,9 +43,10 @@ export function AskVastuTool() {
     if (!file) return;
     try {
       const { base64, mediaType } = await fileToBase64(file);
-      setPendingImage({ base64, mediaType, previewUrl: URL.createObjectURL(file) });
+      const isPdf = mediaType === "application/pdf";
+      setPendingImage({ base64, mediaType, previewUrl: isPdf ? "" : URL.createObjectURL(file), isPdf });
     } catch {
-      setError("Could not read that photo — try a different one.");
+      setError("Could not read that file — try a different one.");
     }
     e.target.value = "";
   }
@@ -146,22 +148,26 @@ export function AskVastuTool() {
 
       {pendingImage && (
         <div className="mt-3 flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={pendingImage.previewUrl} alt="Attached" className="h-12 w-12 rounded-lg object-cover" />
+          {pendingImage.isPdf ? (
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-black/30 text-xl">📄</div>
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={pendingImage.previewUrl} alt="Attached" className="h-12 w-12 rounded-lg object-cover" />
+          )}
           <button onClick={() => setPendingImage(null)} className="text-xs text-[var(--adrith-dim-2)] underline">
-            Remove photo
+            Remove {pendingImage.isPdf ? "PDF" : "photo"}
           </button>
         </div>
       )}
 
       <div className="sticky bottom-4 mt-4 flex items-end gap-2 rounded-xl border border-white/15 bg-[var(--adrith-card)] p-2">
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImagePick} />
+        <input ref={fileInputRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={handleImagePick} />
         <button
           onClick={() => fileInputRef.current?.click()}
           className="rounded-lg border border-white/20 p-2.5 text-sm"
-          aria-label="Attach a photo"
+          aria-label="Attach a photo or PDF floor plan"
         >
-          📷
+          📎
         </button>
         <textarea
           value={input}

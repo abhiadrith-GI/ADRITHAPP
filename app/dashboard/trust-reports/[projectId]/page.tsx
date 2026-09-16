@@ -22,6 +22,14 @@ export default async function ProjectTrustReportsPage({ params }: { params: Prom
     .eq("project_id", projectId)
     .order("created_at", { ascending: false });
 
+  const { data: shareLink } = await supabase
+    .from("public_share_links")
+    .select("token")
+    .eq("resource_type", "trust_reports")
+    .eq("resource_id", projectId)
+    .is("revoked_at", null)
+    .maybeSingle();
+
   return (
     <main className="relative min-h-screen overflow-hidden px-4 py-8">
       <PageBackground src="/backgrounds/civil-rcc.jpg" />
@@ -36,7 +44,7 @@ export default async function ProjectTrustReportsPage({ params }: { params: Prom
         <h1 className="mb-1 mt-3 text-lg font-bold">{project.name}</h1>
         {project.location && <p className="mb-5 text-xs text-[var(--adrith-dim-2)]">{project.location}</p>}
 
-        <TrustReportsPanel projectId={projectId} reports={reports ?? []} />
+        <TrustReportsPanel projectId={projectId} reports={reports ?? []} existingShareToken={shareLink?.token ?? null} />
       </div>
     </main>
   );
