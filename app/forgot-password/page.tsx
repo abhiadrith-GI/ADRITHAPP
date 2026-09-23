@@ -47,7 +47,7 @@ export default function ForgotPasswordPage() {
           </p>
         ) : (
           <>
-            <p className="mb-6 text-sm text-neutral-500">Enter your email and we&apos;ll send you a link to reset it.</p>
+            <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">Enter your email and we&apos;ll send you a link to reset it.</p>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div>
                 <label htmlFor="email" className="mb-1 block text-sm font-medium">
@@ -76,8 +76,8 @@ export default function ForgotPasswordPage() {
           </>
         )}
 
-        <p className="mt-6 text-center text-sm text-neutral-500">
-          <a href="/login" className="font-medium text-neutral-900 underline">
+        <p className="mt-6 text-center text-sm text-[var(--adrith-dim-2)]">
+          <a href="/login" className="font-medium text-[var(--adrith-off-white)] underline">
             Back to log in
           </a>
         </p>

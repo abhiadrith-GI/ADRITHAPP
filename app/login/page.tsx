@@ -85,7 +85,7 @@ function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
             />
-            <a href="/forgot-password" className="mt-1.5 inline-block text-xs font-medium text-neutral-600 underline">
+            <a href="/forgot-password" className="mt-1.5 inline-block text-xs font-medium text-[var(--adrith-dim-2)] underline">
               Forgot password?
             </a>
           </div>
@@ -101,9 +101,9 @@ function LoginForm() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-neutral-500">
+        <p className="mt-6 text-center text-sm text-[var(--adrith-dim-2)]">
           Don&apos;t have an account?{" "}
-          <a href="/signup" className="font-medium text-neutral-900 underline">
+          <a href="/signup" className="font-medium text-[var(--adrith-off-white)] underline">
             Sign up
           </a>
         </p>

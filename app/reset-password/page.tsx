@@ -61,7 +61,7 @@ export default function ResetPasswordPage() {
           </p>
         ) : (
           <>
-            <p className="mb-6 text-sm text-neutral-500">Choose a new password for your account.</p>
+            <p className="mb-6 text-sm text-[var(--adrith-dim-2)]">Choose a new password for your account.</p>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div>
                 <label htmlFor="password" className="mb-1 block text-sm font-medium">
