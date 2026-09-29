@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { buildMaterialSystemPrompt } from "@/lib/materials/grounding";
 import { validateImageInput } from "@/lib/validate-image-input";
 import type { MaterialAnalysisResult } from "@/lib/materials/types";
@@ -26,6 +27,14 @@ export async function POST(req: NextRequest) {
   } = await req.json();
 
   const supabase = await createClient();
+
+  // Marking a reservation done / releasing it is done by the SERVER when its key
+  // is configured (see supabase/patch-trust-reports-lockdown.sql): once locked
+  // down, a signed-in user can no longer delete their own pending reservation
+  // mid-call to free the slot and dodge the daily cap on AI spend.
+  const ledgerKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const ledgerUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const ledger = ledgerKey && ledgerUrl ? createServiceClient(ledgerUrl, ledgerKey) : supabase;
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -112,7 +121,7 @@ export async function POST(req: NextRequest) {
         const errBody = await aiResp.json();
         detail = errBody?.error?.message ?? "";
       } catch {}
-      await supabase.from("material_analysis_attempts").delete().eq("id", attempt.id);
+      await ledger.from("material_analysis_attempts").delete().eq("id", attempt.id).eq("status", "pending");
       return NextResponse.json({ error: `AI request failed (${aiResp.status}).${detail ? " " + detail : ""}` }, { status: 502 });
     }
 
@@ -122,7 +131,7 @@ export async function POST(req: NextRequest) {
     // a parse hiccup, a save failure). Only a failure to get a response
     // at all releases the reservation - see the two spots above/below
     // that delete instead of marking done.
-    await supabase.from("material_analysis_attempts").update({ status: "done" }).eq("id", attempt.id);
+    await ledger.from("material_analysis_attempts").update({ status: "done" }).eq("id", attempt.id);
 
     // A non-streaming call sits silent on the connection for the AI's
     // entire generation time before sending anything back. Once a
@@ -296,7 +305,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    await supabase.from("material_analysis_attempts").delete().eq("id", attempt.id).eq("status", "pending");
+    await ledger.from("material_analysis_attempts").delete().eq("id", attempt.id).eq("status", "pending");
     return NextResponse.json({ error: err instanceof Error ? err.message : "Something went wrong." }, { status: 500 });
   }
 }

@@ -80,7 +80,7 @@ export default function SharedCompletedProjectPage({ params }: { params: Promise
           </>
         )}
 
-        <p className="mt-8 text-center text-[10px] text-white/40">Shared by Adrith Designs &amp; Constructions</p>
+        <p className="mt-8 text-center text-[10px] text-white/40">Shared via ADRITH</p>
       </div>
     </main>
   );

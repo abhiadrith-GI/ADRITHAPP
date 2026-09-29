@@ -10,6 +10,30 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/we
 const MAX_BASE64_LENGTH = 14 * 1024 * 1024;
 
 /**
+ * A declared MIME type is just a string the client chose. This checks the
+ * file's real leading bytes ("magic numbers") against what it claims to be,
+ * so a script or arbitrary blob can't be stored, or forwarded to the AI
+ * provider, dressed up as a photo or PDF.
+ */
+function bytesMatchDeclaredType(base64: string, mediaType: string): boolean {
+  const head = Buffer.from(base64.slice(0, 24), "base64"); // first ~18 bytes
+  const ascii = (from: number, to: number) => head.subarray(from, to).toString("latin1");
+  switch (mediaType) {
+    case "application/pdf":
+      return ascii(0, 5) === "%PDF-";
+    case "image/png":
+      return head.length >= 8 && head[0] === 0x89 && ascii(1, 4) === "PNG";
+    case "image/jpeg":
+    case "image/jpg":
+      return head.length >= 3 && head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff;
+    case "image/webp":
+      return head.length >= 12 && ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP";
+    default:
+      return false;
+  }
+}
+
+/**
  * Validates a client-supplied {imageBase64, imageMediaType} pair before
  * it's used for anything - forwarded to an AI API, uploaded to storage,
  * or decoded at all. Accepts images and PDFs (the caller is responsible
@@ -35,6 +59,9 @@ export function validateImageInput(imageBase64?: string, imageMediaType?: string
   // real file data.
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64)) {
     return "That file's data looks corrupted - please try uploading it again.";
+  }
+  if (!bytesMatchDeclaredType(imageBase64, imageMediaType)) {
+    return "That file doesn't look like a real " + (imageMediaType === "application/pdf" ? "PDF" : "photo") + " - please try a different one.";
   }
   return null;
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, PDFFont, StandardFonts, rgb } from "pdf-lib";
 
 const STATUS_LABELS: Record<string, string> = {
   locked: "Not started",
@@ -12,8 +12,34 @@ const STATUS_LABELS: Record<string, string> = {
 };
 const CHECKPOINT_LABELS: Record<string, string> = { pending: "Pending", pass: "Pass", fail: "Fail", flagged: "Flagged" };
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
+// The built-in PDF fonts can only draw Latin (WinAnsi) characters, and
+// pdf-lib THROWS on anything else - so a Kannada project name, or a rupee
+// sign anywhere in a description, would have turned the whole report into a
+// 500 error. Anything the font can't draw is replaced instead of crashing.
+function safe(font: PDFFont, text: string): string {
+  const supported = new Set(font.getCharacterSet());
+  let out = "";
+  for (const ch of text.normalize("NFC").replace(/\s+/g, " ").trim()) {
+    const cp = ch.codePointAt(0)!;
+    out += supported.has(cp) ? ch : cp === 0x20b9 ? "Rs." : "?";
+  }
+  return out;
+}
+
+// One line, never wrapped - wrapped text would run into the next row.
+function fit(font: PDFFont, text: string, size: number, maxWidth: number): string {
+  let t = safe(font, text);
+  if (font.widthOfTextAtSize(t, size) <= maxWidth) return t;
+  while (t.length > 1 && font.widthOfTextAtSize(t + "...", size) > maxWidth) t = t.slice(0, -1);
+  return t + "...";
+}
+
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = await params;
+  if (!/^[0-9a-f-]{36}$/i.test(projectId)) {
+    return NextResponse.json({ error: "Project not found." }, { status: 404 });
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -50,6 +76,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   const pageWidth = 595;
   const pageHeight = 842;
   const margin = 50;
+  const contentWidth = pageWidth - 2 * margin;
   let page = pdf.addPage([pageWidth, pageHeight]);
   let y = pageHeight - margin;
 
@@ -62,26 +89,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
 
   page.drawText("Civil & RCC Quality Control Report", { x: margin, y, size: 18, font: bold, color: rgb(0.1, 0.1, 0.1) });
   y -= 26;
-  page.drawText(project.name, { x: margin, y, size: 13, font: bold });
+  page.drawText(fit(bold, project.name, 13, contentWidth), { x: margin, y, size: 13, font: bold });
   y -= 16;
   if (project.location) {
-    page.drawText(project.location, { x: margin, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
+    page.drawText(fit(font, project.location, 10, contentWidth), { x: margin, y, size: 10, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 14;
   }
-  page.drawText(`Generated ${new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}`, {
-    x: margin,
-    y,
-    size: 9,
-    font,
-    color: rgb(0.5, 0.5, 0.5),
-  });
+  page.drawText(
+    `Generated ${new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}`,
+    { x: margin, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) }
+  );
   y -= 30;
 
   for (const stage of stages ?? []) {
     ensureSpace(50);
-    page.drawText(stage.display_name, { x: margin, y, size: 13, font: bold });
-    page.drawText(STATUS_LABELS[stage.status] ?? stage.status, {
-      x: pageWidth - margin - 100,
+    page.drawText(fit(bold, stage.display_name, 13, contentWidth - 130), { x: margin, y, size: 13, font: bold });
+    page.drawText(safe(font, STATUS_LABELS[stage.status] ?? stage.status), {
+      x: pageWidth - margin - 110,
       y,
       size: 10,
       font,
@@ -102,8 +126,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
         .select("id", { count: "exact", head: true })
         .eq("checkpoint_id", cp.id);
 
-      page.drawText(`- ${cp.description}`, { x: margin + 10, y, size: 10, font, maxWidth: pageWidth - 2 * margin - 140 });
-      page.drawText(`${CHECKPOINT_LABELS[cp.status] ?? cp.status} (${count ?? 0} photos)`, {
+      page.drawText(fit(font, `- ${cp.description}`, 10, contentWidth - 150), { x: margin + 10, y, size: 10, font });
+      page.drawText(safe(font, `${CHECKPOINT_LABELS[cp.status] ?? cp.status} (${count ?? 0} photos)`), {
         x: pageWidth - margin - 130,
         y,
         size: 9,
@@ -116,10 +140,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ proj
   }
 
   const bytes = await pdf.save();
+  const fileBase = project.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "project";
   return new NextResponse(Buffer.from(bytes), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="${project.name.replace(/[^a-z0-9]+/gi, "-")}-report.pdf"`,
+      "Content-Disposition": `attachment; filename="${fileBase}-report.pdf"`,
+      "Cache-Control": "private, no-store",
     },
   });
 }

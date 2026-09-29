@@ -11,7 +11,15 @@ type Report = {
   created_at: string;
 };
 
-export function TrustReportsPanel({ projectId, reports, existingShareToken }: { projectId: string; reports: Report[]; existingShareToken: string | null }) {
+export function TrustReportsPanel({
+  projectId,
+  reports,
+  existingShareToken,
+}: {
+  projectId: string;
+  reports: Report[];
+  existingShareToken: string | null;
+}) {
   const supabase = createClient();
   const router = useRouter();
   const [generating, setGenerating] = useState(false);
@@ -36,12 +44,36 @@ export function TrustReportsPanel({ projectId, reports, existingShareToken }: { 
     setShareToken(data.token);
   }
 
-  function copyLink() {
+  async function copyLink() {
     if (!shareToken) return;
     const url = `${window.location.origin}/share/trust-reports/${shareToken}`;
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
+  }
+
+  // A link that anyone holding it can open needs an off-switch: this sets
+  // revoked_at, and the database functions that serve the public page refuse
+  // a revoked token on every call - access ends immediately, not eventually.
+  async function revokeLink() {
+    if (!shareToken) return;
+    if (!window.confirm("Revoke this link? Anyone who has it will lose access immediately.")) return;
+    setSharing(true);
+    setError(null);
+    const { error: revokeError } = await supabase
+      .from("public_share_links")
+      .update({ revoked_at: new Date().toISOString() })
+      .eq("token", shareToken);
+    setSharing(false);
+    if (revokeError) {
+      setError(revokeError.message);
+      return;
+    }
+    setShareToken(null);
   }
 
   async function generate() {
@@ -84,13 +116,23 @@ export function TrustReportsPanel({ projectId, reports, existingShareToken }: { 
           Share with family outside the app
         </p>
         {shareToken ? (
-          <button
-            type="button"
-            onClick={copyLink}
-            className="w-full rounded-lg border border-white/20 bg-[var(--adrith-card)] px-3 py-2 text-left text-xs text-[var(--adrith-dim-2)]"
-          >
-            {copied ? "Copied!" : `.../share/trust-reports/${shareToken.slice(0, 10)}… (tap to copy)`}
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={copyLink}
+              className="w-full rounded-lg border border-white/20 bg-[var(--adrith-card)] px-3 py-2 text-left text-xs text-[var(--adrith-dim-2)]"
+            >
+              {copied ? "Copied!" : `.../share/trust-reports/${shareToken.slice(0, 10)}… (tap to copy)`}
+            </button>
+            <button
+              type="button"
+              disabled={sharing}
+              onClick={revokeLink}
+              className="self-start font-mono text-[11px] uppercase tracking-wider text-[var(--adrith-dim-2)] underline disabled:opacity-50"
+            >
+              {sharing ? "Revoking…" : "Revoke link"}
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -102,7 +144,7 @@ export function TrustReportsPanel({ projectId, reports, existingShareToken }: { 
           </button>
         )}
         <p className="mt-2 text-[10px] text-[var(--adrith-dim-2)]">
-          Anyone with this link can view reports for this project — no account needed. Only share it with people you trust.
+          Anyone with this link can view reports for this project — no account needed. Only share it with people you trust, and revoke it any time.
         </p>
       </div>
 
