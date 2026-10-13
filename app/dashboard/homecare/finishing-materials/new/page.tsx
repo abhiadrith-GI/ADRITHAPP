@@ -14,7 +14,7 @@ export default async function NewFinishingMaterialOrderPage() {
 
   const { data: materials } = await supabase
     .from("finishing_materials")
-    .select("id, name, category, unit, customer_price, vendor_payout")
+    .select("id, name, category, unit, customer_price")
     .eq("is_active", true)
     .order("category")
     .order("sort_order");

@@ -25,6 +25,9 @@ export async function POST(req: NextRequest) {
   if (!message || typeof message !== "string" || !message.trim()) {
     return NextResponse.json({ error: "A message is required." }, { status: 400 });
   }
+  if (message.length > 4000 || (conversationId != null && typeof conversationId !== "string")) {
+    return NextResponse.json({ error: "That message is too long." }, { status: 400 });
+  }
 
   const imageError = validateImageInput(imageBase64, imageMediaType);
   if (imageError) {

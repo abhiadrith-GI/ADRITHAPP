@@ -9,7 +9,7 @@ type Material = {
   category: string;
   unit: string;
   customer_price: number;
-  vendor_payout: number;
+  vendor_payout?: number;
 };
 
 const CATEGORY_LABELS: Record<string, string> = {

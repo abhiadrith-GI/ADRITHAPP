@@ -12,7 +12,7 @@ type OrderItem = {
   quantity_requested: number;
   quantity_confirmed: number | null;
   unit_customer_price: number;
-  unit_vendor_payout: number;
+  unit_vendor_payout?: number;
 };
 
 type Order = {
@@ -35,7 +35,7 @@ const STATUS_LABELS: Record<string, string> = {
 function total(items: OrderItem[], field: "quantity_requested" | "quantity_confirmed", priceField: "unit_customer_price" | "unit_vendor_payout") {
   return items.reduce((sum, it) => {
     const qty = field === "quantity_confirmed" ? it.quantity_confirmed ?? it.quantity_requested : it.quantity_requested;
-    return sum + qty * it[priceField];
+    return sum + qty * (it[priceField] ?? 0);
   }, 0);
 }
 

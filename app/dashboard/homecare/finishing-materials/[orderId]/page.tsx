@@ -21,7 +21,7 @@ export default async function FinishingMaterialOrderPage({ params }: { params: P
 
   const { data: items } = await supabase
     .from("finishing_material_order_items")
-    .select("*")
+    .select("id, order_id, material_id, material_name, unit, quantity_requested, quantity_confirmed, unit_customer_price")
     .eq("order_id", orderId)
     .order("material_name");
 

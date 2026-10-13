@@ -47,6 +47,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: imageError }, { status: 400 });
   }
 
+  // Everything below is pasted into the AI prompt, so unbounded text from the
+  // browser is unbounded AI spend per allowed call. Bound it before any work.
+  const history0 = conversationHistory ?? [];
+  const textInvalid =
+    (trade !== "plumbing" && trade !== "electrical") ||
+    typeof roomType !== "string" || roomType.length > 60 ||
+    (description != null && (typeof description !== "string" || description.length > 3000)) ||
+    !Array.isArray(history0) || history0.length > 24 ||
+    history0.some((h) => (h?.role !== "user" && h?.role !== "assistant") || typeof h.content !== "string" || h.content.length > 20000);
+  if (textInvalid) {
+    return NextResponse.json({ error: "That request is too large or malformed." }, { status: 400 });
+  }
+
   const { data: membership } = await supabase
     .from("project_members")
     .select("user_id")

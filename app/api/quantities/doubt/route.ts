@@ -16,6 +16,14 @@ export async function POST(req: NextRequest) {
   if (!question || typeof question !== "string" || !question.trim()) {
     return NextResponse.json({ error: "A question is required." }, { status: 400 });
   }
+  if (
+    question.length > 2000 ||
+    typeof projectId !== "string" ||
+    typeof stageGroupKey !== "string" || stageGroupKey.length > 100 ||
+    (stageLabel != null && (typeof stageLabel !== "string" || stageLabel.length > 100))
+  ) {
+    return NextResponse.json({ error: "That question is too long or malformed." }, { status: 400 });
+  }
 
   const { data: membership } = await supabase
     .from("project_members")
@@ -25,6 +33,21 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (!membership) {
     return NextResponse.json({ error: "Not a member of this project." }, { status: 403 });
+  }
+
+  // The database trigger is the real daily cap (it only counts saved answers,
+  // and runs AFTER the AI call so a failed call never costs a question). On its
+  // own that let someone already at the cap keep triggering paid AI calls whose
+  // answers were thrown away. So check the same cap up front, before spending.
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const { count: askedToday } = await supabase
+    .from("quantity_doubt_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .gte("created_at", dayStart.toISOString());
+  if ((askedToday ?? 0) >= 40) {
+    return NextResponse.json({ error: "Daily question limit reached - please try again tomorrow." }, { status: 429 });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;

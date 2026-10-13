@@ -10,7 +10,6 @@ type Material = {
   category: string;
   unit: string;
   customer_price: number;
-  vendor_payout: number;
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -72,7 +71,6 @@ export function NewOrderForm({ materials, userId }: { materials: Material[]; use
         unit: row.material.unit,
         quantity_requested: row.qty,
         unit_customer_price: row.material.customer_price,
-        unit_vendor_payout: row.material.vendor_payout,
       }))
     );
 

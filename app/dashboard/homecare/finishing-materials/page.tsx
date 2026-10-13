@@ -24,12 +24,21 @@ export default async function FinishingMaterialsPage() {
   const { data: profile } = await supabase.from("profiles").select("is_platform_admin").eq("id", user.id).single();
   const isAdmin = profile?.is_platform_admin ?? false;
 
-  const { data: materials } = await supabase
+  const { data: baseMaterials } = await supabase
     .from("finishing_materials")
-    .select("id, name, category, unit, customer_price, vendor_payout")
+    .select("id, name, category, unit, customer_price")
     .eq("is_active", true)
     .order("category")
     .order("sort_order");
+
+  // Vendor payout is confidential - the database only lets admins read it,
+  // and only through this function. Customers never receive the column.
+  let materials = baseMaterials;
+  if (isAdmin && baseMaterials) {
+    const { data: payouts } = await supabase.rpc("admin_material_payouts", { kind: "finishing" });
+    const byId = new Map<string, number>((payouts ?? []).map((p: { id: string; vendor_payout: number }) => [p.id, Number(p.vendor_payout)]));
+    materials = baseMaterials.map((m) => ({ ...m, vendor_payout: byId.get(m.id) }));
+  }
 
   const ordersQuery = supabase
     .from("finishing_material_orders")
