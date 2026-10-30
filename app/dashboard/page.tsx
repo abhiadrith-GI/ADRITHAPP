@@ -88,6 +88,13 @@ const TOOLS: Tool[] = [
     status: "open",
   },
   {
+    name: "Construction Assistant",
+    description: "Ask any architecture or construction question — free AI chat",
+    icon: "assistant",
+    href: "/dashboard/construction-assistant",
+    status: "open",
+  },
+  {
     name: "Trust Reports",
     description: "Honest, plain-language progress updates for family checking in from anywhere",
     icon: "trust_reports",
