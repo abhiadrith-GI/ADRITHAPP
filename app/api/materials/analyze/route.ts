@@ -319,6 +319,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     await ledger.from("material_analysis_attempts").delete().eq("id", attempt.id).eq("status", "pending");
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Something went wrong." }, { status: 500 });
+    return NextResponse.json({ error: "Something went wrong - please try again." }, { status: 500 });
   }
 }

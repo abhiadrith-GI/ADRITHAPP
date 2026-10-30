@@ -172,7 +172,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Something went wrong.", conversationId: convoId },
+      { error: "Something went wrong - please try again.", conversationId: convoId },
       { status: 500 }
     );
   }

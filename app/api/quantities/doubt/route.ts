@@ -104,6 +104,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ answer });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : "Something went wrong." }, { status: 500 });
+    return NextResponse.json({ error: "Something went wrong - please try again." }, { status: 500 });
   }
 }

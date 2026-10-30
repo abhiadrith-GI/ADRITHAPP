@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
         system: buildConstructionSystemPrompt(),
         messages: turns.map((m) => ({ role: m.role, content: m.content })),
       }),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(22_000) // Netlify kills the function at 26s; stop first so the question can be refunded,
     });
 
     if (!aiResp.ok) {
